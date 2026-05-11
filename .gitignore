@@ -1,0 +1,7 @@
+node_modules/
+.downloads/
+.idea/
+.android-sdk/
+.android-avd/
+build/
+dist/

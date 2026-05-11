@@ -1,0 +1,23 @@
+{
+  "name": "ai-place-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "현재 위치 기반 AI 장소 추천 React 모바일 앱",
+  "scripts": {
+    "dev": "node scripts/dev-server.js",
+    "start": "node scripts/dev-server.js",
+    "build": "node scripts/build-web.js",
+    "check": "node --check src/app.js && node --check src/pages/Home.js && node --check src/components/MapView.js && node --check src/hooks/useCurrentLocation.js && node --check src/services/mapService.js && node --check scripts/dev-server.js && node --check scripts/build-web.js && node --check sw.js",
+    "android:init": "npm.cmd run build && npx.cmd cap add android",
+    "android:sync": "npm.cmd run build && npx.cmd cap sync android",
+    "android:open": "npm.cmd run android:sync && npx.cmd cap open android",
+    "android:run": "npm.cmd run android:sync && npx.cmd cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

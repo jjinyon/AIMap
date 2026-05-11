@@ -1,0 +1,8 @@
+{
+  "appId": "com.designthinking.aiplace",
+  "appName": "AI 장소 추천",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "AI 장소 추천",
+  "short_name": "장소 추천",
+  "description": "현재 위치를 기준으로 주변 장소를 추천하고 지도와 음성 안내를 제공하는 앱입니다.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f8f7",
+  "theme_color": "#0f766e",
+  "categories": ["navigation", "travel", "utilities"],
+  "lang": "ko-KR",
+  "icons": [
+    {
+      "src": "./public/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
