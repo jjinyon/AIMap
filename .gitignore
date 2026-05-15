@@ -1,16 +1,56 @@
+# Dependencies
 node_modules/
-.idea/
-.downloads/
+
+# Generated web assets
 www/
 build/
 dist/
 
-# Android
-android/.gradle/
-android/build/
-android/local.properties
+# Local downloads / temporary folders
+.downloads/
+ai-map-app/
+
+# Editor / IDE
+.idea/
+.vscode/
 *.iml
 
+# Android / Gradle generated files
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/app/debug/
+android/.externalNativeBuild/
+android/.cxx/
+android/captures/
+
+# Android local machine config
+local.properties
+android/local.properties
+
+# Android build outputs
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+*.hprof
+
+# Capacitor generated Android assets
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # OS
 .DS_Store
