@@ -19,8 +19,7 @@ export function useCurrentLocation() {
       setLocation(defaultLocation);
       setStatus({
         tone: "warning",
-        message:
-          "브라우저가 위치 기능을 지원하지 않아 서울 시청 근처를 기준으로 표시합니다.",
+        message: "브라우저가 위치 기능을 지원하지 않아 기본 위치를 표시합니다.",
       });
       return;
     }
@@ -34,14 +33,14 @@ export function useCurrentLocation() {
         });
         setStatus({
           tone: "ready",
-          message: "현재 위치를 기준으로 주변 장소를 추천합니다.",
+          message: "현재 위치를 기준으로 지도를 표시합니다.",
         });
       },
       () => {
         setLocation(defaultLocation);
         setStatus({
           tone: "warning",
-          message: "위치 권한이 없어 서울 시청 근처를 기준으로 추천합니다.",
+          message: "위치 권한이 없어 기본 위치를 표시합니다.",
         });
       },
       {

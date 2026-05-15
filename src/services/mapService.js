@@ -40,7 +40,7 @@ const placeSeeds = [
     reason: "가볍게 걷기 좋은 동선이라 이동 중 쉬어가기 좋습니다.",
   },
   {
-    name: "오늘의 식탁",
+    name: "오늘의 밥상",
     category: "food",
     type: "식사",
     mood: "balanced",
@@ -73,25 +73,7 @@ const placeSeeds = [
     mood: "quick",
     offset: [-0.0018, 0.0016],
     rating: 4.1,
-    reason: "현재 위치에서 가장 부담 없이 들를 수 있습니다.",
-  },
-  {
-    name: "루프탑 라운지",
-    category: "cafe",
-    type: "카페",
-    mood: "active",
-    offset: [0.006, 0.0022],
-    rating: 4.8,
-    reason: "전망이 좋아 약속 장소나 기분 전환 코스로 추천합니다.",
-  },
-  {
-    name: "동네 생활문화센터",
-    category: "culture",
-    type: "문화",
-    mood: "balanced",
-    offset: [-0.0038, 0.0072],
-    rating: 4.2,
-    reason: "지역 체험 프로그램과 작은 전시를 확인하기 좋습니다.",
+    reason: "현재 위치에서 가까워 부담 없이 들를 수 있습니다.",
   },
 ];
 

@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const port = Number(process.env.PORT || 5173);
+const initialPort = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "127.0.0.1";
 
 const contentTypes = {
@@ -12,7 +12,7 @@ const contentTypes = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8"
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 
 const server = http.createServer((request, response) => {
@@ -43,13 +43,28 @@ const server = http.createServer((request, response) => {
     const ext = path.extname(resolvedPath);
     response.writeHead(200, {
       "Content-Type": contentTypes[ext] || "application/octet-stream",
-      "Cache-Control": "no-cache"
+      "Cache-Control": "no-cache",
     });
     response.end(content);
   });
 });
 
-server.listen(port, host, () => {
-  console.log(`AI 장소 추천 앱 실행 중: http://${host}:${port}/`);
-  console.log("종료하려면 Ctrl+C를 누르세요.");
+function listen(port) {
+  server.listen(port, host, () => {
+    console.log(`AI 장소 추천 앱 실행 중: http://${host}:${port}/`);
+    console.log("종료하려면 Ctrl+C를 누르세요.");
+  });
+}
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    const nextPort = Number(server.address()?.port || initialPort) + 1;
+    console.log(`${host}:${nextPort - 1} 포트가 사용 중이라 ${nextPort} 포트로 다시 시도합니다.`);
+    listen(nextPort);
+    return;
+  }
+
+  throw error;
 });
+
+listen(initialPort);

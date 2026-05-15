@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-place-app-v3";
+const CACHE_NAME = "ai-place-app-v4";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -13,7 +13,7 @@ const CORE_ASSETS = [
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
   "https://unpkg.com/react@18/umd/react.production.min.js",
-  "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+  "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
 ];
 
 self.addEventListener("install", (event) => {
@@ -44,25 +44,21 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse.ok || event.request.url.includes("tile.openstreetmap.org")) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
 
-      return fetch(event.request)
-        .then((networkResponse) => {
-          const shouldCache =
-            networkResponse.ok ||
-            event.request.url.includes("tile.openstreetmap.org");
-
-          if (shouldCache) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-          }
-
-          return networkResponse;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+        return networkResponse;
+      })
+      .catch(() =>
+        caches
+          .match(event.request)
+          .then((cachedResponse) => cachedResponse || caches.match("./index.html"))
+      )
   );
 });

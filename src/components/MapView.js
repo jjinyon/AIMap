@@ -1,4 +1,5 @@
 const { useEffect, useRef } = window.React;
+const h = window.React.createElement;
 
 export function MapView({ location, places, selectedPlace, onSelectPlace }) {
   const mapEl = useRef(null);
@@ -21,7 +22,7 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(mapRef.current);
 
-    L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
+    setTimeout(() => mapRef.current?.invalidateSize(), 0);
   }, [location.lat, location.lng]);
 
   useEffect(() => {
@@ -36,10 +37,10 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
     }
 
     userMarkerRef.current = L.circleMarker(point, {
-      radius: 10,
-      color: "#123c36",
+      radius: 9,
+      color: "#ffffff",
       weight: 3,
-      fillColor: "#2dd4bf",
+      fillColor: "#2f80ed",
       fillOpacity: 0.95,
     })
       .bindPopup("현재 위치")
@@ -106,5 +107,3 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
 
   return h("div", { className: "map-card" }, h("div", { ref: mapEl, id: "map" }));
 }
-
-const h = window.React.createElement;
