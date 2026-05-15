@@ -25,7 +25,7 @@ function App() {
 
     const handleInstalled = () => {
       setInstallPrompt(null);
-      setAppStatus("앱으로 설치되었습니다.");
+      setAppStatus("앱이 설치되었습니다.");
     };
 
     updateNetworkStatus();
@@ -63,7 +63,7 @@ async function registerServiceWorker(setAppStatus) {
   try {
     await navigator.serviceWorker.register("./sw.js");
   } catch {
-    setAppStatus("오프라인 앱 기능을 준비하지 못했습니다.");
+    setAppStatus("오프라인 기능을 준비하지 못했습니다.");
   }
 }
 

@@ -9,15 +9,15 @@ export const categoryOptions = [
   { value: "food", label: "식사" },
   { value: "cafe", label: "카페" },
   { value: "culture", label: "문화" },
-  { value: "park", label: "공원" },
+  { value: "park", label: "산책" },
   { value: "convenience", label: "편의" },
 ];
 
 export const moodOptions = [
   { value: "balanced", label: "균형" },
-  { value: "quiet", label: "조용" },
-  { value: "active", label: "활기" },
-  { value: "quick", label: "근처" },
+  { value: "quiet", label: "조용히" },
+  { value: "active", label: "활동적" },
+  { value: "quick", label: "가깝게" },
 ];
 
 const placeSeeds = [
@@ -28,12 +28,12 @@ const placeSeeds = [
     mood: "quiet",
     offset: [0.0048, -0.0032],
     rating: 4.7,
-    reason: "작업하기 좋은 좌석과 차분한 분위기가 어울립니다.",
+    reason: "작업하기 좋은 좌석과 차분한 분위기가 잘 맞습니다.",
   },
   {
     name: "그린웨이 산책로",
     category: "park",
-    type: "공원",
+    type: "산책",
     mood: "quiet",
     offset: [-0.0054, 0.004],
     rating: 4.5,
@@ -46,10 +46,10 @@ const placeSeeds = [
     mood: "balanced",
     offset: [0.0028, 0.0062],
     rating: 4.6,
-    reason: "후기가 안정적이고 혼밥과 모임 모두 무난합니다.",
+    reason: "대기 시간이 안정적이고 혼밥과 모임 모두 무난합니다.",
   },
   {
-    name: "시티 아트랩",
+    name: "시티 아트홀",
     category: "culture",
     type: "문화",
     mood: "active",
@@ -91,7 +91,7 @@ const placeSeeds = [
     mood: "balanced",
     offset: [-0.0038, 0.0072],
     rating: 4.2,
-    reason: "지역 체험 프로그램과 전시를 확인하기 좋습니다.",
+    reason: "지역 체험 프로그램과 작은 전시를 확인하기 좋습니다.",
   },
 ];
 

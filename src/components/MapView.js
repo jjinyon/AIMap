@@ -36,10 +36,10 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
     }
 
     userMarkerRef.current = L.circleMarker(point, {
-      radius: 9,
-      color: "#0f766e",
+      radius: 10,
+      color: "#123c36",
       weight: 3,
-      fillColor: "#14b8a6",
+      fillColor: "#2dd4bf",
       fillOpacity: 0.95,
     })
       .bindPopup("현재 위치")
@@ -89,7 +89,7 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
     ];
 
     routeLineRef.current = L.polyline([start, mid, end], {
-      color: "#ef4444",
+      color: "#f97316",
       weight: 5,
       opacity: 0.86,
       dashArray: "8 10",

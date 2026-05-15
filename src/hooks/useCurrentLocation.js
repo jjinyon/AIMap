@@ -6,13 +6,13 @@ export function useCurrentLocation() {
   const [location, setLocation] = useState(defaultLocation);
   const [status, setStatus] = useState({
     tone: "loading",
-    message: "현재 위치를 가져오는 중입니다.",
+    message: "현재 위치를 확인하는 중입니다.",
   });
 
   const locate = useCallback(() => {
     setStatus({
       tone: "loading",
-      message: "현재 위치를 가져오는 중입니다.",
+      message: "현재 위치를 확인하는 중입니다.",
     });
 
     if (!navigator.geolocation) {
@@ -20,7 +20,7 @@ export function useCurrentLocation() {
       setStatus({
         tone: "warning",
         message:
-          "이 브라우저는 위치 기능을 지원하지 않아 서울 시청 근처를 기준으로 표시합니다.",
+          "브라우저가 위치 기능을 지원하지 않아 서울 시청 근처를 기준으로 표시합니다.",
       });
       return;
     }

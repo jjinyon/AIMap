@@ -21,7 +21,7 @@ export function Home({ appStatus, canInstall, onInstall }) {
     [location, category, mood]
   );
   const selectedPlace =
-    places.find((place) => place.id === selectedPlaceId) || null;
+    places.find((place) => place.id === selectedPlaceId) || places[0] || null;
 
   const selectPlace = useCallback(
     (placeId, shouldSpeak = false) => {
@@ -43,37 +43,30 @@ export function Home({ appStatus, canInstall, onInstall }) {
   };
 
   const speakSelected = () => {
-    const place = selectedPlace || places[0];
-    if (!place) return;
-    setSelectedPlaceId(place.id);
-    speakPlace(place);
+    if (!selectedPlace) return;
+    setSelectedPlaceId(selectedPlace.id);
+    speakPlace(selectedPlace);
   };
-
-  const routeText = selectedPlace
-    ? `${selectedPlace.name}까지 약 ${formatDistance(
-        selectedPlace.distance
-      )}. 지도에 간단 경로를 표시했습니다.`
-    : "장소를 선택하면 간단 경로가 표시됩니다.";
 
   return h(
     "main",
-    { className: "showcase" },
+    { className: "app-shell" },
     h(
       "section",
-      { className: "showcase-copy", "aria-label": "프로젝트 소개" },
-      h("p", { className: "eyebrow" }, "REACT MOBILE APP"),
-      h("h1", null, "AI 장소 추천"),
+      { className: "story-panel", "aria-label": "서비스 소개" },
+      h("p", { className: "eyebrow" }, "DESIGN THINKING PROTOTYPE"),
+      h("h1", null, "지금 내 주변, 세 번 안에 고르기"),
       h(
         "p",
         null,
-        "팀 시연과 모바일 앱 전환을 염두에 둔 React 기반 위치 추천 화면입니다."
+        "현재 위치와 기분을 바탕으로 갈 만한 장소를 빠르게 좁혀주는 모바일 추천 프로토타입입니다."
       ),
       h(
         "div",
-        { className: "demo-points" },
-        h("span", null, "PWA 설치 가능"),
-        h("span", null, "위치 권한 대응"),
-        h("span", null, "지도 경로 표시")
+        { className: "story-metrics", "aria-label": "핵심 기능" },
+        h(Metric, { value: "01", label: "위치 확인" }),
+        h(Metric, { value: "02", label: "취향 필터" }),
+        h(Metric, { value: "03", label: "길 안내" })
       )
     ),
     h(
@@ -89,7 +82,7 @@ export function Home({ appStatus, canInstall, onInstall }) {
           h(
             "div",
             null,
-            h("span", { className: "status-pill" }, "AI MAP"),
+            h("span", { className: "status-pill" }, "AI PLACE"),
             h("h2", null, "주변 추천")
           ),
           h(
@@ -110,13 +103,13 @@ export function Home({ appStatus, canInstall, onInstall }) {
             h(
               "button",
               {
-                className: "icon-button",
+                className: "icon-button refresh",
                 type: "button",
-                title: "현재 위치",
-                "aria-label": "현재 위치",
+                title: "현재 위치 새로고침",
+                "aria-label": "현재 위치 새로고침",
                 onClick: refresh,
               },
-              "◎"
+              "↻"
             )
           )
         ),
@@ -126,7 +119,12 @@ export function Home({ appStatus, canInstall, onInstall }) {
           "section",
           { className: "location-card" },
           h("span", { className: `status-dot ${status.tone}` }),
-          h("p", null, status.message)
+          h(
+            "div",
+            null,
+            h("strong", null, location.label),
+            h("p", null, status.message)
+          )
         ),
         h(MapView, {
           location,
@@ -138,7 +136,7 @@ export function Home({ appStatus, canInstall, onInstall }) {
           "section",
           { className: "controls-card", "aria-label": "추천 조건" },
           h(SegmentedControl, {
-            label: "추천 유형",
+            label: "어디로 갈까요?",
             value: category,
             options: categoryOptions,
             onChange: (value) => {
@@ -147,7 +145,7 @@ export function Home({ appStatus, canInstall, onInstall }) {
             },
           }),
           h(SegmentedControl, {
-            label: "분위기",
+            label: "오늘 분위기",
             value: mood,
             options: moodOptions,
             onChange: (value) => {
@@ -157,12 +155,19 @@ export function Home({ appStatus, canInstall, onInstall }) {
           })
         ),
         h(
+          "section",
+          { className: "summary-panel", "aria-label": "선택 장소 요약" },
+          selectedPlace
+            ? h(SelectedSummary, { place: selectedPlace })
+            : h("p", null, "추천 장소를 선택하면 이동 요약이 표시됩니다.")
+        ),
+        h(
           "div",
           { className: "action-row" },
           h(
             "button",
             { type: "button", onClick: refresh },
-            "새로고침"
+            "다시 추천"
           ),
           h(
             "button",
@@ -170,7 +175,6 @@ export function Home({ appStatus, canInstall, onInstall }) {
             "음성 안내"
           )
         ),
-        h("div", { className: "route-summary" }, routeText),
         h(
           "section",
           { className: "place-list", "aria-label": "추천 장소 목록" },
@@ -179,13 +183,22 @@ export function Home({ appStatus, canInstall, onInstall }) {
               key: place.id,
               place,
               index,
-              active: place.id === selectedPlaceId,
+              active: place.id === selectedPlace?.id,
               onClick: () => selectPlace(place.id, true),
             })
           )
         )
       )
     )
+  );
+}
+
+function Metric({ value, label }) {
+  return h(
+    "span",
+    { className: "metric" },
+    h("strong", null, value),
+    h("small", null, label)
   );
 }
 
@@ -209,6 +222,20 @@ function SegmentedControl({ label, value, options, onChange }) {
           option.label
         )
       )
+    )
+  );
+}
+
+function SelectedSummary({ place }) {
+  return h(
+    "div",
+    null,
+    h("span", null, "추천 경로"),
+    h("strong", null, place.name),
+    h(
+      "p",
+      null,
+      `${formatDistance(place.distance)} 거리의 ${place.type}입니다. ${place.reason}`
     )
   );
 }
