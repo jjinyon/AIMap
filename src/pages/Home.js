@@ -1,51 +1,151 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 
+const { useState } = window.React;
 const h = window.React.createElement;
 
 const navItems = [
-  { label: "음성 안내", icon: "headphones" },
-  { label: "길찾기", icon: "cursor" },
-  { label: "지도", icon: "foldedMap", active: true },
-  { label: "대화", icon: "message" },
-  { label: "내 정보", icon: "profile" },
+  { id: "audio", label: "음성 안내", icon: "headphones" },
+  { id: "route", label: "길찾기", icon: "cursor" },
+  { id: "map", label: "지도", icon: "foldedMap" },
+  { id: "chat", label: "대화", icon: "message" },
+  { id: "account", label: "내 정보", icon: "profile" },
 ];
 
 export function Home({ appStatus }) {
   const { location } = useCurrentLocation();
+  const [screen, setScreen] = useState("map");
+
+  const openNav = (itemId) => {
+    if (itemId === "account") {
+      setScreen("signup");
+      return;
+    }
+
+    setScreen("map");
+  };
 
   return h(
     "main",
     { className: "app-shell" },
     h(
       "section",
-      { className: "phone-frame", "aria-label": "지도 첫 화면" },
+      { className: "phone-frame", "aria-label": "AI 장소 추천 앱" },
       h("div", { className: "phone-camera", "aria-hidden": "true" }),
       h(
         "div",
         { className: "phone-screen" },
-        h(MapView, {
-          location,
-          places: [],
-          selectedPlace: null,
-          onSelectPlace: () => {},
-        }),
-        h(
-          "div",
-          { className: "persistent-ui" },
-          h("div", { className: "top-pills", "aria-hidden": "true" }, [
-            h("span", { key: "1" }, "내 위치"),
-            h("span", { key: "2" }, "주변 탐색"),
-            h("span", { key: "3" }, "AI 추천"),
-          ]),
-          h(SearchBar),
-          h(MapActions),
-          h(BottomNav)
-        ),
-        appStatus
-          ? h("p", { className: "app-status", role: "status" }, appStatus)
-          : null
+        screen === "map"
+          ? h(MapScreen, { location, appStatus })
+          : screen === "settings"
+            ? h(SettingsScreen, { onBack: () => setScreen("signup") })
+            : h(SignupScreen, { onOpenSettings: () => setScreen("settings") }),
+        h(BottomNav, {
+          activeId: screen === "map" ? "map" : "account",
+          onSelect: openNav,
+        })
       )
+    )
+  );
+}
+
+function MapScreen({ location, appStatus }) {
+  return h(
+    "div",
+    { className: "screen-layer map-screen" },
+    h(MapView, {
+      location,
+      places: [],
+      selectedPlace: null,
+      onSelectPlace: () => {},
+    }),
+    h(
+      "div",
+      { className: "persistent-ui" },
+      h("div", { className: "top-pills", "aria-hidden": "true" }, [
+        h("span", { key: "1" }, "내 위치"),
+        h("span", { key: "2" }, "주변 탐색"),
+        h("span", { key: "3" }, "AI 추천"),
+      ]),
+      h(SearchBar),
+      h(MapActions)
+    ),
+    appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
+  );
+}
+
+function SignupScreen({ onOpenSettings }) {
+  return h(
+    "div",
+    { className: "screen-layer panel-screen signup-screen" },
+    h(
+      "header",
+      { className: "panel-header" },
+      h("span", { className: "header-caption" }, "회원"),
+      h(
+        "button",
+        {
+          className: "icon-button",
+          type: "button",
+          "aria-label": "설정 열기",
+          onClick: onOpenSettings,
+        },
+        h(Icon, { name: "settings" })
+      )
+    ),
+    h(
+      "section",
+      { className: "profile-card", "aria-label": "회원가입" },
+      h("div", { className: "coffee-avatar", "aria-hidden": "true" }),
+      h("button", { className: "avatar-add", type: "button", "aria-label": "프로필 사진 추가" }, "+"),
+      h("h1", null, "회원가입"),
+      h(ProfileField, { label: "이름", value: "이름을 입력하세요" }),
+      h(ProfileField, { label: "닉네임", value: "닉네임을 입력하세요" }),
+      h(ProfileField, { label: "이메일", value: "you@example.com", icon: "mail" }),
+      h(ProfileField, { label: "비밀번호", value: "비밀번호를 입력하세요", icon: "lock" }),
+      h(
+        "button",
+        { className: "primary-action", type: "button" },
+        "가입하기"
+      )
+    )
+  );
+}
+
+function SettingsScreen({ onBack }) {
+  return h(
+    "div",
+    { className: "screen-layer panel-screen settings-screen" },
+    h(
+      "header",
+      { className: "panel-header" },
+      h(
+        "button",
+        {
+          className: "icon-button",
+          type: "button",
+          "aria-label": "회원가입 화면으로 돌아가기",
+          onClick: onBack,
+        },
+        h(Icon, { name: "chevronLeft" })
+      ),
+      h("h1", null, "설정"),
+      h("span", { className: "header-spacer", "aria-hidden": "true" })
+    ),
+    h(
+      "section",
+      { className: "settings-list", "aria-label": "앱 설정" },
+      h(SettingsRow, { label: "내 정보", enabled: true }),
+      h(SettingsRow, { label: "내 지도", enabled: true }),
+      h(SettingsRow, { label: "알림", enabled: false }),
+      h(SettingsRow, { label: "AI 추천", enabled: true }),
+      h(SettingsDivider),
+      h("p", { className: "settings-section-title" }, "도움말"),
+      h(SimpleRow, { icon: "helpCircle", label: "앱 가이드" }),
+      h(SimpleRow, { icon: "shield", label: "개인정보 보호" }),
+      h(SettingsDivider),
+      h("p", { className: "settings-section-title" }, "기타"),
+      h(SimpleRow, { icon: "info", label: "앱 정보" })
     )
   );
 }
@@ -88,7 +188,7 @@ function MapActions() {
   );
 }
 
-function BottomNav() {
+function BottomNav({ activeId, onSelect }) {
   return h(
     "nav",
     { className: "bottom-nav", "aria-label": "하단 메뉴" },
@@ -96,15 +196,60 @@ function BottomNav() {
       h(
         "button",
         {
-          key: item.label,
-          className: item.active ? "active" : "",
+          key: item.id,
+          className: item.id === activeId ? "active" : "",
           type: "button",
           "aria-label": item.label,
+          onClick: () => onSelect(item.id),
         },
         h(Icon, { name: item.icon })
       )
     )
   );
+}
+
+function ProfileField({ label, value, icon }) {
+  return h(
+    "label",
+    { className: "profile-field" },
+    h("span", null, label),
+    h(
+      "div",
+      { className: "field-control" },
+      h("input", { defaultValue: "", placeholder: value, type: icon === "lock" ? "password" : "text" }),
+      icon ? h(Icon, { name: icon }) : null
+    )
+  );
+}
+
+function SettingsRow({ label, enabled }) {
+  return h(
+    "div",
+    { className: "settings-row" },
+    h("span", null, label),
+    h(
+      "button",
+      {
+        className: enabled ? "switch is-on" : "switch",
+        type: "button",
+        "aria-label": `${label} ${enabled ? "켜짐" : "꺼짐"}`,
+      },
+      h("span", null)
+    )
+  );
+}
+
+function SimpleRow({ icon, label }) {
+  return h(
+    "button",
+    { className: "simple-row", type: "button" },
+    h(Icon, { name: icon }),
+    h("span", null, label)
+  );
+}
+
+function SettingsDivider() {
+  return h("hr", { className: "settings-divider" });
 }
 
 function Icon({ name }) {
@@ -161,6 +306,32 @@ function Icon({ name }) {
       h("path", { key: "1", d: "m12 3 9 5-9 5-9-5 9-5z" }),
       h("path", { key: "2", d: "m3 12 9 5 9-5" }),
       h("path", { key: "3", d: "m3 16 9 5 9-5" }),
+    ],
+    settings: [
+      h("path", { key: "1", d: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" }),
+      h("path", { key: "2", d: "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-2 .2l-.2.1-3.4-2-.1-.3a1.7 1.7 0 0 0-1.7-1.1 1.7 1.7 0 0 0-1.7 1.1l-.1.3-3.4 2-.2-.1a1.7 1.7 0 0 0-2-.2l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15l-.1-.2v-4l.1-.2a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 2-.2l.2-.1 3.4 2 .1.3a1.7 1.7 0 0 0 3.4 0l.1-.3 3.4-2 .2.1a1.7 1.7 0 0 0 2 .2l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9l.1.2v4l-.1.2z" }),
+    ],
+    chevronLeft: [h("path", { key: "1", d: "m15 18-6-6 6-6" })],
+    mail: [
+      h("path", { key: "1", d: "M4 6h16v12H4z" }),
+      h("path", { key: "2", d: "m4 7 8 6 8-6" }),
+    ],
+    lock: [
+      h("rect", { key: "1", x: 5, y: 11, width: 14, height: 10, rx: 2 }),
+      h("path", { key: "2", d: "M8 11V8a4 4 0 0 1 8 0v3" }),
+    ],
+    helpCircle: [
+      h("circle", { key: "1", cx: 12, cy: 12, r: 9 }),
+      h("path", { key: "2", d: "M9.5 9a2.7 2.7 0 0 1 5 1.4c0 1.9-2.5 2.1-2.5 3.6" }),
+      h("path", { key: "3", d: "M12 17h.01" }),
+    ],
+    shield: [
+      h("path", { key: "1", d: "M12 3 5 6v6c0 4.4 2.8 7.2 7 9 4.2-1.8 7-4.6 7-9V6l-7-3z" }),
+    ],
+    info: [
+      h("circle", { key: "1", cx: 12, cy: 12, r: 9 }),
+      h("path", { key: "2", d: "M12 11v5" }),
+      h("path", { key: "3", d: "M12 8h.01" }),
     ],
   };
 

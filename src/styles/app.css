@@ -76,6 +76,15 @@ button {
   background: #eee3d4;
 }
 
+.screen-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.map-screen {
+  background: #eee3d4;
+}
+
 .map-card,
 #map {
   position: absolute;
@@ -220,12 +229,241 @@ button {
   box-shadow: 0 6px 16px rgba(48, 43, 35, 0.12);
 }
 
+.panel-screen {
+  z-index: 10;
+  overflow: hidden auto;
+  padding: 22px 13px 72px;
+  background: #fffef9;
+}
+
+.panel-header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+  min-height: 34px;
+  margin-bottom: 8px;
+}
+
+.panel-header h1,
+.header-caption {
+  margin: 0;
+  color: #202020;
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.header-caption {
+  grid-column: 2;
+}
+
+.header-spacer {
+  width: 32px;
+  height: 32px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  color: #222222;
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.signup-screen .icon-button {
+  grid-column: 3;
+  justify-self: end;
+  background: #fff2d4;
+  color: #df9d37;
+}
+
+.profile-card {
+  position: relative;
+  display: grid;
+  justify-items: stretch;
+  padding-top: 6px;
+}
+
+.coffee-avatar {
+  justify-self: center;
+  width: 96px;
+  height: 96px;
+  margin: 8px 0 8px;
+  border: 6px solid #ffffff;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 49% 47%, #f8e4c4 0 17%, #c58b55 18% 23%, transparent 24%),
+    radial-gradient(circle at 52% 48%, transparent 0 31%, #7b4a2d 32% 48%, #f4eee4 49% 55%, #5d3a27 56% 100%);
+  box-shadow: 0 8px 22px rgba(59, 39, 23, 0.18);
+}
+
+.avatar-add {
+  position: absolute;
+  top: 78px;
+  left: calc(50% + 26px);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f4b95d;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+  box-shadow: 0 4px 10px rgba(162, 105, 29, 0.28);
+}
+
+.profile-card h1 {
+  margin: 0 0 10px;
+  color: #1f1f1f;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.profile-field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.profile-field > span {
+  color: #333333;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.field-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 7px 0 0;
+  border-bottom: 1px solid #e6e0d7;
+}
+
+.field-control input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #222222;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.field-control input::placeholder {
+  color: #a29b91;
+}
+
+.field-control svg {
+  width: 16px;
+  height: 16px;
+  color: #4d4d4d;
+}
+
+.primary-action {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  margin-top: 4px;
+  border-radius: 10px;
+  background: #f2b760;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  box-shadow: 0 8px 16px rgba(196, 127, 36, 0.22);
+}
+
+.settings-screen {
+  padding-top: 18px;
+}
+
+.settings-list {
+  display: grid;
+  gap: 0;
+}
+
+.settings-row,
+.simple-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid #ece6de;
+  background: transparent;
+  color: #222222;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.simple-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+
+.simple-row svg {
+  width: 15px;
+  height: 15px;
+  color: #333333;
+}
+
+.switch {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: #ded7ce;
+}
+
+.switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease;
+}
+
+.switch.is-on {
+  background: #f0b65c;
+}
+
+.switch.is-on span {
+  transform: translateX(13px);
+}
+
+.settings-section-title {
+  margin: 13px 0 4px;
+  color: #d89b3f;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.settings-divider {
+  width: 100%;
+  margin: 11px 0 0;
+  border: 0;
+  border-top: 1px solid #eee8df;
+}
+
 .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1;
+  z-index: 1000;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   min-height: 58px;
