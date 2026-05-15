@@ -6,9 +6,11 @@ build/
 dist/
 
 # Android
-.gradle/
-local.properties
-android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+*.iml
+
 
 # OS
 .DS_Store
