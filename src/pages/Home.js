@@ -1,5 +1,7 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
+import { searchPlaces } from "../services/geocodingService.js";
+import { findRoute, formatRouteSummary } from "../services/routingService.js";
 
 const { useState } = window.React;
 const h = window.React.createElement;
@@ -73,6 +75,64 @@ function renderScreen(screen, location, appStatus, setScreen) {
 }
 
 function MapScreen({ location, appStatus }) {
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedSearchResult, setSelectedSearchResult] = useState(null);
+  const [routePath, setRoutePath] = useState([]);
+  const [routeStatus, setRouteStatus] = useState("");
+  const [searchStatus, setSearchStatus] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+
+  const selectDestination = async (destination) => {
+    setSelectedSearchResult(destination);
+    setRoutePath([]);
+    setRouteStatus("경로를 찾는 중입니다.");
+
+    try {
+      const route = await findRoute(location, destination);
+      setRoutePath(route.points);
+      setRouteStatus(formatRouteSummary(route));
+    } catch {
+      setRouteStatus("현재 위치에서 목적지까지의 경로를 찾지 못했습니다.");
+    }
+  };
+
+  const submitSearch = async () => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setSearchStatus("");
+      setRouteStatus("");
+      setSearchResults([]);
+      setSelectedSearchResult(null);
+      setRoutePath([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchStatus("장소를 검색하는 중입니다.");
+
+    try {
+      const results = await searchPlaces(trimmedQuery, location);
+      setSearchResults(results);
+      setSearchStatus(results.length ? `${results.length}개의 장소를 찾았습니다.` : "검색 결과가 없습니다.");
+      if (results[0]) {
+        await selectDestination(results[0]);
+      } else {
+        setSelectedSearchResult(null);
+        setRoutePath([]);
+        setRouteStatus("");
+      }
+    } catch {
+      setSearchStatus("검색에 실패했습니다. 잠시 후 다시 시도하세요.");
+      setRouteStatus("");
+      setSearchResults([]);
+      setSelectedSearchResult(null);
+      setRoutePath([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   return h(
     "div",
     { className: "screen-layer map-screen" },
@@ -81,6 +141,10 @@ function MapScreen({ location, appStatus }) {
       places: [],
       selectedPlace: null,
       onSelectPlace: () => {},
+      searchResults,
+      selectedSearchResult,
+      onSelectSearchResult: selectDestination,
+      routePath,
     }),
     h(
       "div",
@@ -90,7 +154,18 @@ function MapScreen({ location, appStatus }) {
         h("span", { key: "2" }, "주변 탐색"),
         h("span", { key: "3" }, "AI 추천"),
       ]),
-      h(SearchBar),
+      h(SearchBar, {
+        value: query,
+        isSearching,
+        onChange: setQuery,
+        onSubmit: submitSearch,
+      }),
+      h(SearchResults, {
+        results: searchResults,
+        status: routeStatus || searchStatus,
+        selectedId: selectedSearchResult?.id,
+        onSelect: selectDestination,
+      }),
       h(MapActions)
     ),
     appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
@@ -203,23 +278,56 @@ function SettingsScreen({ onBack }) {
   );
 }
 
-function SearchBar() {
+function SearchBar({ value, isSearching, onChange, onSubmit }) {
   return h(
     "form",
     {
       className: "search-bar",
       role: "search",
-      onSubmit: (event) => event.preventDefault(),
+      onSubmit: (event) => {
+        event.preventDefault();
+        onSubmit();
+      },
     },
     h("input", {
       "aria-label": "위치 검색",
-      placeholder: "어디로 떠나볼까요?",
+      placeholder: "장소를 검색하세요",
       type: "search",
+      value,
+      onChange: (event) => onChange(event.target.value),
     }),
     h(
       "button",
-      { className: "search-button", type: "submit", "aria-label": "검색" },
+      {
+        className: "search-button",
+        type: "submit",
+        "aria-label": "검색",
+        disabled: isSearching,
+      },
       h(Icon, { name: "search" })
+    )
+  );
+}
+
+function SearchResults({ results, status, selectedId, onSelect }) {
+  if (!status && results.length === 0) return null;
+
+  return h(
+    "section",
+    { className: "search-results", "aria-label": "장소 검색 결과" },
+    status ? h("p", { className: "search-status" }, status) : null,
+    results.map((result) =>
+      h(
+        "button",
+        {
+          key: result.id,
+          className: result.id === selectedId ? "search-result active" : "search-result",
+          type: "button",
+          onClick: () => onSelect(result),
+        },
+        h("strong", null, result.name),
+        h("span", null, result.address || "주소 정보 없음")
+      )
     )
   );
 }

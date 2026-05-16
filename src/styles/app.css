@@ -187,6 +187,64 @@ button {
   height: 19px;
 }
 
+.search-results {
+  position: absolute;
+  top: 74px;
+  left: 11px;
+  right: 48px;
+  z-index: 2;
+  display: grid;
+  max-height: 202px;
+  overflow: hidden auto;
+  border: 1px solid rgba(211, 202, 188, 0.92);
+  border-radius: 13px;
+  background: rgba(255, 253, 247, 0.98);
+  box-shadow: 0 9px 20px rgba(48, 43, 35, 0.16);
+  pointer-events: auto;
+}
+
+.search-status {
+  margin: 0;
+  padding: 8px 10px 6px;
+  color: #6a6f69;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.search-result {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 43px;
+  padding: 7px 10px;
+  border-top: 1px solid #eee7dd;
+  background: transparent;
+  color: #202020;
+  text-align: left;
+}
+
+.search-result.active {
+  background: #fff0cf;
+}
+
+.search-result strong {
+  overflow: hidden;
+  color: #171717;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result span {
+  overflow: hidden;
+  color: #767970;
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .map-actions {
   position: absolute;
   top: 86px;
@@ -609,8 +667,14 @@ button {
     right: 14px;
   }
 
+  .search-results {
+    top: calc(max(14px, env(safe-area-inset-top)) + 46px);
+    left: 14px;
+    right: 54px;
+  }
+
   .top-pills {
-    top: calc(max(14px, env(safe-area-inset-top)) + 47px);
+    top: calc(max(14px, env(safe-area-inset-top)) + 255px);
     left: 14px;
   }
 

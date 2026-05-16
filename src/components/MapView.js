@@ -1,12 +1,23 @@
 const { useEffect, useRef } = window.React;
 const h = window.React.createElement;
 
-export function MapView({ location, places, selectedPlace, onSelectPlace }) {
+export function MapView({
+  location,
+  places,
+  selectedPlace,
+  onSelectPlace,
+  searchResults = [],
+  selectedSearchResult,
+  onSelectSearchResult,
+  routePath = [],
+}) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
   const userMarkerRef = useRef(null);
   const placeMarkersRef = useRef([]);
+  const searchMarkersRef = useRef([]);
   const routeLineRef = useRef(null);
+  const selectedPlaceRouteRef = useRef(null);
 
   useEffect(() => {
     if (!window.L || !mapEl.current || mapRef.current) return;
@@ -29,7 +40,6 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
     if (!mapRef.current) return;
 
     const point = [location.lat, location.lng];
-    mapRef.current.setView(point, 15);
 
     if (userMarkerRef.current) {
       userMarkerRef.current.setLatLng(point);
@@ -67,10 +77,41 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
       ...places.map((place) => [place.lat, place.lng]),
     ];
 
-    if (points.length > 1) {
+    if (points.length > 1 && searchResults.length === 0) {
       mapRef.current.fitBounds(points, { padding: [28, 28], maxZoom: 15 });
     }
-  }, [location, places, onSelectPlace]);
+  }, [location, places, onSelectPlace, searchResults.length]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    searchMarkersRef.current.forEach((marker) => marker.remove());
+    searchMarkersRef.current = searchResults.map((result) => {
+      const marker = L.marker([result.lat, result.lng])
+        .bindPopup(`<strong>${result.name}</strong><br />${result.address || "검색한 장소"}`)
+        .addTo(mapRef.current);
+
+      marker.on("click", () => onSelectSearchResult?.(result));
+      return marker;
+    });
+
+    if (selectedSearchResult) {
+      const point = [selectedSearchResult.lat, selectedSearchResult.lng];
+      mapRef.current.setView(point, 16);
+
+      const marker = searchMarkersRef.current.find((item) => {
+        const latLng = item.getLatLng();
+        return latLng.lat === selectedSearchResult.lat && latLng.lng === selectedSearchResult.lng;
+      });
+      marker?.openPopup();
+      return;
+    }
+
+    if (searchResults.length > 1) {
+      const bounds = searchResults.map((result) => [result.lat, result.lng]);
+      mapRef.current.fitBounds(bounds, { padding: [44, 44], maxZoom: 15 });
+    }
+  }, [searchResults, selectedSearchResult, onSelectSearchResult]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -78,6 +119,29 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
     if (routeLineRef.current) {
       routeLineRef.current.remove();
       routeLineRef.current = null;
+    }
+
+    if (!routePath.length) return;
+
+    routeLineRef.current = L.polyline(routePath, {
+      color: "#1d4ed8",
+      weight: 6,
+      opacity: 0.9,
+    }).addTo(mapRef.current);
+
+    mapRef.current.fitBounds(routePath, {
+      paddingTopLeft: [26, 104],
+      paddingBottomRight: [26, 86],
+      maxZoom: 16,
+    });
+  }, [routePath]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (selectedPlaceRouteRef.current) {
+      selectedPlaceRouteRef.current.remove();
+      selectedPlaceRouteRef.current = null;
     }
 
     if (!selectedPlace) return;
@@ -89,7 +153,7 @@ export function MapView({ location, places, selectedPlace, onSelectPlace }) {
       (start[1] + end[1]) / 2 - 0.0006,
     ];
 
-    routeLineRef.current = L.polyline([start, mid, end], {
+    selectedPlaceRouteRef.current = L.polyline([start, mid, end], {
       color: "#f97316",
       weight: 5,
       opacity: 0.86,
