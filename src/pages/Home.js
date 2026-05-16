@@ -5,11 +5,17 @@ const { useState } = window.React;
 const h = window.React.createElement;
 
 const navItems = [
-  { id: "audio", label: "음성 안내", icon: "headphones" },
+  { id: "audio", label: "오디오", icon: "headphones" },
   { id: "route", label: "길찾기", icon: "cursor" },
   { id: "map", label: "지도", icon: "foldedMap" },
   { id: "chat", label: "대화", icon: "message" },
   { id: "account", label: "내 정보", icon: "profile" },
+];
+
+const audioOptions = [
+  { label: "현재 지역", tone: "warm" },
+  { label: "목적지", tone: "green" },
+  { label: "경로기반", tone: "blue" },
 ];
 
 export function Home({ appStatus }) {
@@ -17,6 +23,11 @@ export function Home({ appStatus }) {
   const [screen, setScreen] = useState("map");
 
   const openNav = (itemId) => {
+    if (itemId === "audio") {
+      setScreen("audio");
+      return;
+    }
+
     if (itemId === "account") {
       setScreen("signup");
       return;
@@ -35,18 +46,30 @@ export function Home({ appStatus }) {
       h(
         "div",
         { className: "phone-screen" },
-        screen === "map"
-          ? h(MapScreen, { location, appStatus })
-          : screen === "settings"
-            ? h(SettingsScreen, { onBack: () => setScreen("signup") })
-            : h(SignupScreen, { onOpenSettings: () => setScreen("settings") }),
+        renderScreen(screen, location, appStatus, setScreen),
         h(BottomNav, {
-          activeId: screen === "map" ? "map" : "account",
+          activeId: screen === "audio" ? "audio" : screen === "map" ? "map" : "account",
           onSelect: openNav,
         })
       )
     )
   );
+}
+
+function renderScreen(screen, location, appStatus, setScreen) {
+  if (screen === "audio") {
+    return h(AudioScreen);
+  }
+
+  if (screen === "settings") {
+    return h(SettingsScreen, { onBack: () => setScreen("signup") });
+  }
+
+  if (screen === "signup") {
+    return h(SignupScreen, { onOpenSettings: () => setScreen("settings") });
+  }
+
+  return h(MapScreen, { location, appStatus });
 }
 
 function MapScreen({ location, appStatus }) {
@@ -71,6 +94,40 @@ function MapScreen({ location, appStatus }) {
       h(MapActions)
     ),
     appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
+  );
+}
+
+function AudioScreen() {
+  return h(
+    "div",
+    { className: "screen-layer audio-screen" },
+    h(
+      "header",
+      { className: "audio-header" },
+      h("div", { className: "audio-wave", "aria-hidden": "true" }, [
+        h("span", { key: "1" }),
+        h("span", { key: "2" }),
+        h("span", { key: "3" }),
+        h("span", { key: "4" }),
+        h("span", { key: "5" }),
+      ]),
+      h("h1", null, "어떤 곳의 이야기를 듣고 싶으신가요?")
+    ),
+    h(
+      "section",
+      { className: "audio-options", "aria-label": "오디오 선택지" },
+      audioOptions.map((option) =>
+        h(
+          "button",
+          {
+            key: option.label,
+            className: `audio-option ${option.tone}`,
+            type: "button",
+          },
+          option.label
+        )
+      )
+    )
   );
 }
 
@@ -103,11 +160,7 @@ function SignupScreen({ onOpenSettings }) {
       h(ProfileField, { label: "닉네임", value: "닉네임을 입력하세요" }),
       h(ProfileField, { label: "이메일", value: "you@example.com", icon: "mail" }),
       h(ProfileField, { label: "비밀번호", value: "비밀번호를 입력하세요", icon: "lock" }),
-      h(
-        "button",
-        { className: "primary-action", type: "button" },
-        "가입하기"
-      )
+      h("button", { className: "primary-action", type: "button" }, "가입하기")
     )
   );
 }
@@ -175,16 +228,8 @@ function MapActions() {
   return h(
     "div",
     { className: "map-actions", "aria-label": "지도 도구" },
-    h(
-      "button",
-      { type: "button", "aria-label": "현재 위치 보기" },
-      h(Icon, { name: "target" })
-    ),
-    h(
-      "button",
-      { type: "button", "aria-label": "지도 레이어" },
-      h(Icon, { name: "layers" })
-    )
+    h("button", { type: "button", "aria-label": "현재 위치 보기" }, h(Icon, { name: "target" })),
+    h("button", { type: "button", "aria-label": "지도 레이어" }, h(Icon, { name: "layers" }))
   );
 }
 
@@ -216,7 +261,11 @@ function ProfileField({ label, value, icon }) {
     h(
       "div",
       { className: "field-control" },
-      h("input", { defaultValue: "", placeholder: value, type: icon === "lock" ? "password" : "text" }),
+      h("input", {
+        defaultValue: "",
+        placeholder: value,
+        type: icon === "lock" ? "password" : "text",
+      }),
       icon ? h(Icon, { name: icon }) : null
     )
   );
@@ -240,12 +289,7 @@ function SettingsRow({ label, enabled }) {
 }
 
 function SimpleRow({ icon, label }) {
-  return h(
-    "button",
-    { className: "simple-row", type: "button" },
-    h(Icon, { name: icon }),
-    h("span", null, label)
-  );
+  return h("button", { className: "simple-row", type: "button" }, h(Icon, { name: icon }), h("span", null, label));
 }
 
 function SettingsDivider() {
@@ -308,8 +352,8 @@ function Icon({ name }) {
       h("path", { key: "3", d: "m3 16 9 5 9-5" }),
     ],
     settings: [
-      h("path", { key: "1", d: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" }),
-      h("path", { key: "2", d: "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-2 .2l-.2.1-3.4-2-.1-.3a1.7 1.7 0 0 0-1.7-1.1 1.7 1.7 0 0 0-1.7 1.1l-.1.3-3.4 2-.2-.1a1.7 1.7 0 0 0-2-.2l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15l-.1-.2v-4l.1-.2a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 2-.2l.2-.1 3.4 2 .1.3a1.7 1.7 0 0 0 3.4 0l.1-.3 3.4-2 .2.1a1.7 1.7 0 0 0 2 .2l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9l.1.2v4l-.1.2z" }),
+      h("circle", { key: "1", cx: 12, cy: 12, r: 3 }),
+      h("path", { key: "2", d: "M19.4 15a7.8 7.8 0 0 0 .1-1.1 7.8 7.8 0 0 0-.1-1.1l2-1.5-2-3.5-2.4 1a8.2 8.2 0 0 0-1.9-1.1L14.8 5h-4l-.4 2.7a8.2 8.2 0 0 0-1.9 1.1l-2.4-1-2 3.5 2 1.5a7.8 7.8 0 0 0-.1 1.1 7.8 7.8 0 0 0 .1 1.1l-2 1.5 2 3.5 2.4-1a8.2 8.2 0 0 0 1.9 1.1l.4 2.7h4l.4-2.7a8.2 8.2 0 0 0 1.9-1.1l2.4 1 2-3.5-2.1-1.5z" }),
     ],
     chevronLeft: [h("path", { key: "1", d: "m15 18-6-6 6-6" })],
     mail: [
@@ -325,9 +369,7 @@ function Icon({ name }) {
       h("path", { key: "2", d: "M9.5 9a2.7 2.7 0 0 1 5 1.4c0 1.9-2.5 2.1-2.5 3.6" }),
       h("path", { key: "3", d: "M12 17h.01" }),
     ],
-    shield: [
-      h("path", { key: "1", d: "M12 3 5 6v6c0 4.4 2.8 7.2 7 9 4.2-1.8 7-4.6 7-9V6l-7-3z" }),
-    ],
+    shield: [h("path", { key: "1", d: "M12 3 5 6v6c0 4.4 2.8 7.2 7 9 4.2-1.8 7-4.6 7-9V6l-7-3z" })],
     info: [
       h("circle", { key: "1", cx: 12, cy: 12, r: 9 }),
       h("path", { key: "2", d: "M12 11v5" }),
