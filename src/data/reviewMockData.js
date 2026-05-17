@@ -1,0 +1,76 @@
+export const reviewMockData = {
+  currentAreaLabel: "내 현재 지역",
+  filters: ["토박이", "타지인", "사장님"],
+  recommendedPlaces: [
+    {
+      id: "recommended-1",
+      name: "다온당",
+      rating: 4.9,
+      reviewCount: 50,
+      summary: "분위기가 좋아요. 메뉴 선택이 편해요.",
+      aiReason: "내 현재 지역에서 자주 저장되는 인기 장소입니다.",
+    },
+    {
+      id: "recommended-2",
+      name: "솔솥",
+      rating: 4.8,
+      reviewCount: 232,
+      summary: "혼밥하기 좋고 회전이 빨라요.",
+      aiReason: "최근 방문 리뷰가 꾸준히 올라오는 장소입니다.",
+    },
+    {
+      id: "recommended-3",
+      name: "부산당",
+      rating: 4.9,
+      reviewCount: 51,
+      summary: "친절하고 재방문 의사가 높아요.",
+      aiReason: "평점과 리뷰 반응이 좋은 추천 장소입니다.",
+    },
+  ],
+  searchHistory: [
+    {
+      id: "history-1",
+      keyword: "부산광역시 해운대구",
+      date: "05.13",
+    },
+    {
+      id: "history-2",
+      keyword: "성남시 분당구 판교동",
+      date: "05.12",
+    },
+    {
+      id: "history-3",
+      keyword: "수원시 영통구 영통동",
+      date: "05.08",
+    },
+  ],
+  reviewPlaces: [
+    {
+      id: "review-place-1",
+      name: "한우리가",
+      rating: 4.7,
+      reviewCount: 500,
+      tags: ["타지인", "토박이"],
+      summary: "대화하기 좋고 매장이 깔끔해요.",
+      reviewText: "직원 응대가 편하고 음식이 빨리 나왔어요.",
+    },
+    {
+      id: "review-place-2",
+      name: "솔솥",
+      rating: 4.2,
+      reviewCount: 382,
+      tags: ["타지인", "사장님"],
+      summary: "메뉴가 쉬워서 처음 방문하기 좋아요.",
+      reviewText: "혼자 가도 부담 없고 좌석 안내가 빨랐어요.",
+    },
+    {
+      id: "review-place-3",
+      name: "부산당",
+      rating: 2.9,
+      reviewCount: 82,
+      tags: ["토박이", "타지인"],
+      summary: "사람마다 호불호가 있지만 접근성이 좋아요.",
+      reviewText: "위치는 편하지만 붐비는 시간대는 피하는 게 좋아요.",
+    },
+  ],
+};

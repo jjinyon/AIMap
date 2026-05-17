@@ -1,5 +1,6 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
+import { reviewMockData } from "../data/reviewMockData.js";
 import { searchPlaces } from "../services/geocodingService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 
@@ -10,7 +11,7 @@ const navItems = [
   { id: "audio", label: "오디오", icon: "headphones" },
   { id: "route", label: "길찾기", icon: "cursor" },
   { id: "map", label: "지도", icon: "foldedMap" },
-  { id: "chat", label: "대화", icon: "message" },
+  { id: "review", label: "리뷰", icon: "message" },
   { id: "account", label: "내 정보", icon: "profile" },
 ];
 
@@ -20,6 +21,13 @@ const audioOptions = [
   { label: "경로기반", tone: "blue" },
 ];
 
+const routeOptions = [
+  "\ube60\ub974\uac8c",
+  "\uacc4\ub2e8 X",
+  "\uc9c0\uc5ed \ub9cc\ub07d",
+  "\ud37c\uc2a4\ub110",
+];
+
 export function Home({ appStatus }) {
   const { location } = useCurrentLocation();
   const [screen, setScreen] = useState("map");
@@ -27,6 +35,16 @@ export function Home({ appStatus }) {
   const openNav = (itemId) => {
     if (itemId === "audio") {
       setScreen("audio");
+      return;
+    }
+
+    if (itemId === "route") {
+      setScreen("route");
+      return;
+    }
+
+    if (itemId === "review") {
+      setScreen("review");
       return;
     }
 
@@ -50,7 +68,7 @@ export function Home({ appStatus }) {
         { className: "phone-screen" },
         renderScreen(screen, location, appStatus, setScreen),
         h(BottomNav, {
-          activeId: screen === "audio" ? "audio" : screen === "map" ? "map" : "account",
+          activeId: screen === "audio" ? "audio" : screen === "route" ? "route" : screen === "review" ? "review" : screen === "map" ? "map" : "account",
           onSelect: openNav,
         })
       )
@@ -71,10 +89,14 @@ function renderScreen(screen, location, appStatus, setScreen) {
     return h(SignupScreen, { onOpenSettings: () => setScreen("settings") });
   }
 
-  return h(MapScreen, { location, appStatus });
+  if (screen === "review") {
+    return h(ReviewScreen);
+  }
+
+  return h(MapScreen, { location, appStatus, isRouteMode: screen === "route" });
 }
 
-function MapScreen({ location, appStatus }) {
+function MapScreen({ location, appStatus, isRouteMode = false }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState(null);
@@ -135,7 +157,7 @@ function MapScreen({ location, appStatus }) {
 
   return h(
     "div",
-    { className: "screen-layer map-screen" },
+    { className: isRouteMode ? "screen-layer map-screen route-mode" : "screen-layer map-screen" },
     h(MapView, {
       location,
       places: [],
@@ -149,11 +171,19 @@ function MapScreen({ location, appStatus }) {
     h(
       "div",
       { className: "persistent-ui" },
-      h("div", { className: "top-pills", "aria-hidden": "true" }, [
-        h("span", { key: "1" }, "내 위치"),
-        h("span", { key: "2" }, "주변 탐색"),
-        h("span", { key: "3" }, "AI 추천"),
-      ]),
+      isRouteMode
+        ? h(
+            "div",
+            { className: "route-option-strip", "aria-label": "\uacbd\ub85c \uc635\uc158" },
+            routeOptions.map((option) =>
+              h("button", { key: option, className: "route-option", type: "button" }, option)
+            )
+          )
+        : h("div", { className: "top-pills", "aria-hidden": "true" }, [
+            h("span", { key: "1" }, "내 위치"),
+            h("span", { key: "2" }, "주변 탐색"),
+            h("span", { key: "3" }, "AI 추천"),
+          ]),
       h(SearchBar, {
         value: query,
         isSearching,
@@ -202,6 +232,133 @@ function AudioScreen() {
           option.label
         )
       )
+    )
+  );
+}
+
+function ReviewScreen() {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState("recommended");
+  const [activeFilter, setActiveFilter] = useState(reviewMockData.filters[1]);
+
+  const showResults = view === "results";
+  const showHistory = view === "history";
+  const visiblePlaces = showResults
+    ? reviewMockData.reviewPlaces.filter((place) => place.tags.includes(activeFilter))
+    : reviewMockData.recommendedPlaces;
+
+  const submitSearch = (event) => {
+    event.preventDefault();
+    setView(query.trim() ? "results" : "history");
+  };
+
+  const selectHistory = (historyItem) => {
+    setQuery(historyItem.keyword);
+    setView("results");
+  };
+
+  return h(
+    "div",
+    { className: "screen-layer review-screen" },
+    h(
+      "form",
+      { className: "review-search", role: "search", onSubmit: submitSearch },
+      h("input", {
+        "aria-label": "리뷰 장소 검색",
+        placeholder: "장소, 가게명 검색",
+        type: "search",
+        value: query,
+        onFocus: () => {
+          if (!query.trim() && view === "recommended") setView("history");
+        },
+        onChange: (event) => setQuery(event.target.value),
+      }),
+      h("button", { type: "submit", "aria-label": "검색" }, h(Icon, { name: "search" }))
+    ),
+    h(
+      "div",
+      { className: "review-body" },
+      showHistory
+        ? h(ReviewHistoryList, { history: reviewMockData.searchHistory, onSelect: selectHistory })
+        : [
+            showResults
+              ? h(ReviewFilterBar, {
+                  key: "filters",
+                  filters: reviewMockData.filters,
+                  activeFilter,
+                  onSelect: setActiveFilter,
+                })
+              : h("h1", { key: "title", className: "review-section-title" }, `${reviewMockData.currentAreaLabel}의 인기 장소`),
+            h(ReviewPlaceList, { key: "places", places: visiblePlaces, showReviewText: showResults }),
+          ]
+    )
+  );
+}
+
+function ReviewHistoryList({ history, onSelect }) {
+  return h(
+    "section",
+    { className: "review-history", "aria-label": "검색 기록" },
+    history.map((item) =>
+      h(
+        "button",
+        {
+          key: item.id,
+          className: "review-history-row",
+          type: "button",
+          onClick: () => onSelect(item),
+        },
+        h("span", null, item.keyword),
+        h("time", null, item.date),
+        h("span", { className: "history-remove", "aria-hidden": "true" }, "\u00d7")
+      )
+    )
+  );
+}
+
+function ReviewFilterBar({ filters, activeFilter, onSelect }) {
+  return h(
+    "div",
+    { className: "review-filters", "aria-label": "리뷰 필터" },
+    filters.map((filter) =>
+      h(
+        "button",
+        {
+          key: filter,
+          className: filter === activeFilter ? "review-filter active" : "review-filter",
+          type: "button",
+          onClick: () => onSelect(filter),
+        },
+        filter
+      )
+    )
+  );
+}
+
+function ReviewPlaceList({ places, showReviewText }) {
+  return h(
+    "section",
+    { className: "review-place-list", "aria-label": "리뷰 장소 목록" },
+    places.map((place) => h(ReviewPlaceRow, { key: place.id, place, showReviewText }))
+  );
+}
+
+function ReviewPlaceRow({ place, showReviewText }) {
+  return h(
+    "article",
+    { className: "review-place-row" },
+    h("div", { className: "review-thumb", "aria-hidden": "true" }),
+    h(
+      "div",
+      { className: "review-place-copy" },
+      h(
+        "div",
+        { className: "review-place-heading" },
+        h("strong", null, place.name),
+        h("span", { className: "review-rating" }, `★ ${place.rating} (${place.reviewCount})`)
+      ),
+      h("p", null, showReviewText ? place.reviewText : place.summary),
+      !showReviewText && place.aiReason ? h("small", null, place.aiReason) : null
     )
   );
 }
