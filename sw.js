@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-place-app-v8";
+const CACHE_NAME = "ai-place-app-v9";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -12,10 +12,6 @@ const CORE_ASSETS = [
   "./src/services/mapService.js",
   "./src/services/routingService.js",
   "./src/styles/app.css",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
-  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
-  "https://unpkg.com/react@18/umd/react.production.min.js",
-  "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
 ];
 
 self.addEventListener("install", (event) => {

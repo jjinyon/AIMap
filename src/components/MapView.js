@@ -14,102 +14,112 @@ export function MapView({
   const mapEl = useRef(null);
   const mapRef = useRef(null);
   const userMarkerRef = useRef(null);
+  const userInfoRef = useRef(null);
   const placeMarkersRef = useRef([]);
   const searchMarkersRef = useRef([]);
   const routeLineRef = useRef(null);
   const selectedPlaceRouteRef = useRef(null);
 
   useEffect(() => {
-    if (!window.L || !mapEl.current || mapRef.current) return;
+    if (!window.kakao?.maps || !mapEl.current || mapRef.current) return;
 
-    mapRef.current = L.map(mapEl.current, {
-      zoomControl: false,
-      attributionControl: false,
-    }).setView([location.lat, location.lng], 15);
+    const center = toLatLng(location);
+    mapRef.current = new kakao.maps.Map(mapEl.current, {
+      center,
+      level: 4,
+    });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(mapRef.current);
+    userInfoRef.current = new kakao.maps.InfoWindow({
+      content: '<div style="padding:6px 8px;font-size:12px;font-weight:700;">현재 위치</div>',
+    });
 
-    setTimeout(() => mapRef.current?.invalidateSize(), 0);
+    setTimeout(() => mapRef.current?.relayout(), 0);
   }, [location.lat, location.lng]);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
-    const point = [location.lat, location.lng];
+    const center = toLatLng(location);
 
     if (userMarkerRef.current) {
-      userMarkerRef.current.setLatLng(point);
+      userMarkerRef.current.setPosition(center);
       return;
     }
 
-    userMarkerRef.current = L.circleMarker(point, {
-      radius: 9,
-      color: "#ffffff",
-      weight: 3,
-      fillColor: "#2f80ed",
-      fillOpacity: 0.95,
-    })
-      .bindPopup("현재 위치")
-      .addTo(mapRef.current);
+    userMarkerRef.current = new kakao.maps.Marker({
+      map: mapRef.current,
+      position: center,
+      title: "현재 위치",
+    });
+
+    kakao.maps.event.addListener(userMarkerRef.current, "click", () => {
+      userInfoRef.current?.open(mapRef.current, userMarkerRef.current);
+    });
   }, [location]);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
-    placeMarkersRef.current.forEach((marker) => marker.remove());
+    clearMarkers(placeMarkersRef.current);
     placeMarkersRef.current = places.map((place) => {
-      const marker = L.marker([place.lat, place.lng])
-        .bindPopup(
-          `<strong>${place.name}</strong><br />${place.type}<br />${place.reason}`
-        )
-        .addTo(mapRef.current);
+      const marker = createMarker(place, place.name);
+      const infoWindow = createInfoWindow(
+        `<strong>${escapeHtml(place.name)}</strong><br />${escapeHtml(place.type)}<br />${escapeHtml(place.reason)}`
+      );
 
-      marker.on("click", () => onSelectPlace(place.id, true));
+      kakao.maps.event.addListener(marker, "click", () => {
+        infoWindow.open(mapRef.current, marker);
+        onSelectPlace(place.id, true);
+      });
+
       return marker;
     });
 
-    const points = [
-      [location.lat, location.lng],
-      ...places.map((place) => [place.lat, place.lng]),
-    ];
-
-    if (points.length > 1 && searchResults.length === 0) {
-      mapRef.current.fitBounds(points, { padding: [28, 28], maxZoom: 15 });
+    if (places.length > 0 && searchResults.length === 0) {
+      fitPlaces([location, ...places]);
     }
   }, [location, places, onSelectPlace, searchResults.length]);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
-    searchMarkersRef.current.forEach((marker) => marker.remove());
+    clearMarkers(searchMarkersRef.current);
     searchMarkersRef.current = searchResults.map((result) => {
-      const marker = L.marker([result.lat, result.lng])
-        .bindPopup(`<strong>${result.name}</strong><br />${result.address || "검색한 장소"}`)
-        .addTo(mapRef.current);
+      const marker = createMarker(result, result.name);
+      const infoWindow = createInfoWindow(
+        `<strong>${escapeHtml(result.name)}</strong><br />${escapeHtml(result.address || "검색한 장소")}`
+      );
 
-      marker.on("click", () => onSelectSearchResult?.(result));
+      kakao.maps.event.addListener(marker, "click", () => {
+        infoWindow.open(mapRef.current, marker);
+        onSelectSearchResult?.(result);
+      });
+
       return marker;
     });
 
     if (selectedSearchResult) {
-      const point = [selectedSearchResult.lat, selectedSearchResult.lng];
-      mapRef.current.setView(point, 16);
+      const point = toLatLng(selectedSearchResult);
+      mapRef.current.setCenter(point);
+      mapRef.current.setLevel(3);
 
       const marker = searchMarkersRef.current.find((item) => {
-        const latLng = item.getLatLng();
-        return latLng.lat === selectedSearchResult.lat && latLng.lng === selectedSearchResult.lng;
+        const position = item.getPosition();
+        return (
+          position.getLat() === selectedSearchResult.lat &&
+          position.getLng() === selectedSearchResult.lng
+        );
       });
-      marker?.openPopup();
+      marker && createInfoWindow(
+        `<strong>${escapeHtml(selectedSearchResult.name)}</strong><br />${escapeHtml(
+          selectedSearchResult.address || "검색한 장소"
+        )}`
+      ).open(mapRef.current, marker);
       return;
     }
 
     if (searchResults.length > 1) {
-      const bounds = searchResults.map((result) => [result.lat, result.lng]);
-      mapRef.current.fitBounds(bounds, { padding: [44, 44], maxZoom: 15 });
+      fitPlaces(searchResults);
     }
   }, [searchResults, selectedSearchResult, onSelectSearchResult]);
 
@@ -117,57 +127,96 @@ export function MapView({
     if (!mapRef.current) return;
 
     if (routeLineRef.current) {
-      routeLineRef.current.remove();
+      routeLineRef.current.setMap(null);
       routeLineRef.current = null;
     }
 
     if (!routePath.length) return;
 
-    routeLineRef.current = L.polyline(routePath, {
-      color: "#1d4ed8",
-      weight: 6,
-      opacity: 0.9,
-    }).addTo(mapRef.current);
-
-    mapRef.current.fitBounds(routePath, {
-      paddingTopLeft: [26, 104],
-      paddingBottomRight: [26, 86],
-      maxZoom: 16,
+    const path = routePath.map(([lat, lng]) => new kakao.maps.LatLng(lat, lng));
+    routeLineRef.current = new kakao.maps.Polyline({
+      map: mapRef.current,
+      path,
+      strokeWeight: 6,
+      strokeColor: "#1d4ed8",
+      strokeOpacity: 0.92,
+      strokeStyle: "solid",
     });
+
+    fitLatLngs(path);
   }, [routePath]);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
     if (selectedPlaceRouteRef.current) {
-      selectedPlaceRouteRef.current.remove();
+      selectedPlaceRouteRef.current.setMap(null);
       selectedPlaceRouteRef.current = null;
     }
 
     if (!selectedPlace) return;
 
-    const start = [location.lat, location.lng];
-    const end = [selectedPlace.lat, selectedPlace.lng];
-    const mid = [
-      (start[0] + end[0]) / 2 + 0.0008,
-      (start[1] + end[1]) / 2 - 0.0006,
-    ];
+    const start = toLatLng(location);
+    const end = toLatLng(selectedPlace);
+    const mid = new kakao.maps.LatLng(
+      (location.lat + selectedPlace.lat) / 2 + 0.0008,
+      (location.lng + selectedPlace.lng) / 2 - 0.0006
+    );
 
-    selectedPlaceRouteRef.current = L.polyline([start, mid, end], {
-      color: "#f97316",
-      weight: 5,
-      opacity: 0.86,
-      dashArray: "8 10",
-    }).addTo(mapRef.current);
-
-    mapRef.current.fitBounds([start, end], { padding: [48, 48], maxZoom: 16 });
-
-    const marker = placeMarkersRef.current.find((item) => {
-      const latLng = item.getLatLng();
-      return latLng.lat === selectedPlace.lat && latLng.lng === selectedPlace.lng;
+    selectedPlaceRouteRef.current = new kakao.maps.Polyline({
+      map: mapRef.current,
+      path: [start, mid, end],
+      strokeWeight: 5,
+      strokeColor: "#f97316",
+      strokeOpacity: 0.86,
+      strokeStyle: "shortdash",
     });
-    marker?.openPopup();
+
+    fitLatLngs([start, end]);
   }, [location, selectedPlace]);
 
+  function createMarker(place, title) {
+    return new kakao.maps.Marker({
+      map: mapRef.current,
+      position: toLatLng(place),
+      title,
+    });
+  }
+
+  function fitPlaces(items) {
+    fitLatLngs(items.map(toLatLng));
+  }
+
+  function fitLatLngs(points) {
+    if (!points.length) return;
+
+    const bounds = new kakao.maps.LatLngBounds();
+    points.forEach((point) => bounds.extend(point));
+    mapRef.current.setBounds(bounds);
+  }
+
   return h("div", { className: "map-card" }, h("div", { ref: mapEl, id: "map" }));
+}
+
+function toLatLng(item) {
+  return new kakao.maps.LatLng(Number(item.lat), Number(item.lng));
+}
+
+function createInfoWindow(content) {
+  return new kakao.maps.InfoWindow({
+    content: `<div style="padding:7px 9px;font-size:12px;line-height:1.4;max-width:180px;">${content}</div>`,
+  });
+}
+
+function clearMarkers(markers) {
+  markers.forEach((marker) => marker.setMap(null));
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
