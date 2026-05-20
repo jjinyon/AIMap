@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-place-app-v9";
+const CACHE_NAME = "ai-place-app-v10";
 const CORE_ASSETS = [
   "./",
   "./index.html",

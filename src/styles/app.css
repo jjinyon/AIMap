@@ -472,6 +472,14 @@ button {
   font-weight: 900;
 }
 
+.review-status {
+  margin: 0;
+  color: #6b706a;
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .review-place-list {
   display: grid;
   gap: 14px;
@@ -482,6 +490,17 @@ button {
   grid-template-columns: 50px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.review-place-row.is-selected {
+  padding: 6px;
+  border-radius: 8px;
+  background: #fff5df;
 }
 
 .review-thumb {
@@ -532,6 +551,14 @@ button {
 
 .review-place-copy small {
   color: #83837c;
+}
+
+.review-place-detail {
+  display: grid;
+  gap: 4px;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid #eadfcb;
 }
 
 .review-history {

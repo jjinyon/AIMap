@@ -35,6 +35,59 @@ export async function searchPlaces(query, location) {
   });
 }
 
+const nearbyCategoryCodes = ["FD6", "CE7", "AT4", "CT1", "PK6"];
+
+export async function fetchNearbyReviewPlaces(location) {
+  if (!location?.lat || !location?.lng) return [];
+
+  await waitForKakaoMaps();
+
+  const results = await Promise.all(
+    nearbyCategoryCodes.map((code) => searchNearbyCategory(code, location))
+  );
+
+  return shufflePlaces(dedupePlaces(results.flat()))
+    .slice(0, 6)
+    .map((place, index) => ({
+      ...place,
+      id: `nearby-review-${place.id || index}`,
+      ratingLabel: place.distance ? `${place.distance}m` : "주변",
+      summary: makePlaceSummary(place),
+      aiReason: makePlaceReason(place),
+      reviewText: makePlaceDescription(place),
+      description: makePlaceDescription(place),
+    }));
+}
+
+function searchNearbyCategory(categoryCode, location) {
+  return new Promise((resolve, reject) => {
+    const places = new kakao.maps.services.Places();
+
+    places.categorySearch(
+      categoryCode,
+      (data, status) => {
+        if (status === kakao.maps.services.Status.OK) {
+          resolve(data.map(normalizeKakaoPlace));
+          return;
+        }
+
+        if (status === kakao.maps.services.Status.ZERO_RESULT) {
+          resolve([]);
+          return;
+        }
+
+        reject(new Error("Failed to load nearby places."));
+      },
+      {
+        location: new kakao.maps.LatLng(location.lat, location.lng),
+        radius: 1200,
+        size: 8,
+        sort: kakao.maps.services.SortBy.DISTANCE,
+      }
+    );
+  });
+}
+
 function normalizeKakaoPlace(place) {
   return {
     id: place.id,
@@ -43,9 +96,47 @@ function normalizeKakaoPlace(place) {
     lat: Number(place.y),
     lng: Number(place.x),
     type: place.category_group_name || place.category_name || "장소",
+    category: place.category_group_code || "",
+    distance: Number(place.distance || 0),
     phone: place.phone || "",
     url: place.place_url || "",
   };
+}
+
+function dedupePlaces(places) {
+  const seen = new Set();
+
+  return places.filter((place) => {
+    const key = place.id || `${place.name}-${place.address}`;
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function shufflePlaces(places) {
+  return [...places].sort(() => Math.random() - 0.5);
+}
+
+function makePlaceSummary(place) {
+  const distance = place.distance ? `${place.distance}m` : "가까운 거리";
+  return `${place.type || "장소"} · 현재 위치에서 약 ${distance}`;
+}
+
+function makePlaceReason(place) {
+  return place.address || "현재 위치 주변에서 찾은 실제 장소입니다.";
+}
+
+function makePlaceDescription(place) {
+  const parts = [
+    place.type ? `${place.type} 카테고리의 실제 주변 장소입니다.` : "현재 위치 주변의 실제 장소입니다.",
+    place.address ? `주소: ${place.address}` : "",
+    place.distance ? `현재 위치에서 약 ${place.distance}m 떨어져 있습니다.` : "",
+    place.phone ? `전화: ${place.phone}` : "",
+  ].filter(Boolean);
+
+  return parts.join(" ");
 }
 
 function waitForKakaoMaps() {

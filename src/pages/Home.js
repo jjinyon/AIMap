@@ -1,10 +1,10 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 import { reviewMockData } from "../data/reviewMockData.js";
-import { searchPlaces } from "../services/geocodingService.js";
+import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 
-const { useState } = window.React;
+const { useEffect, useState } = window.React;
 const h = window.React.createElement;
 
 const navItems = [
@@ -90,7 +90,7 @@ function renderScreen(screen, location, appStatus, setScreen) {
   }
 
   if (screen === "review") {
-    return h(ReviewScreen);
+    return h(ReviewScreen, { location });
   }
 
   return h(MapScreen, { location, appStatus, isRouteMode: screen === "route" });
@@ -236,25 +236,61 @@ function AudioScreen() {
   );
 }
 
-function ReviewScreen() {
+function ReviewScreen({ location }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("recommended");
   const [activeFilter, setActiveFilter] = useState(reviewMockData.filters[1]);
+  const [nearbyPlaces, setNearbyPlaces] = useState([]);
+  const [nearbyStatus, setNearbyStatus] = useState("현재 위치 주변 장소를 찾고 있습니다.");
+  const [selectedPlaceId, setSelectedPlaceId] = useState(null);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadNearbyPlaces() {
+      setNearbyStatus("현재 위치 주변 장소를 찾고 있습니다.");
+
+      try {
+        const places = await fetchNearbyReviewPlaces(location);
+        if (ignore) return;
+
+        setNearbyPlaces(places);
+        setNearbyStatus(places.length ? "" : "주변에서 보여줄 장소를 찾지 못했습니다.");
+        setSelectedPlaceId(null);
+      } catch {
+        if (ignore) return;
+
+        setNearbyPlaces([]);
+        setNearbyStatus("주변 장소를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setSelectedPlaceId(null);
+      }
+    }
+
+    loadNearbyPlaces();
+
+    return () => {
+      ignore = true;
+    };
+  }, [location.lat, location.lng]);
 
   const showResults = view === "results";
   const showHistory = view === "history";
   const visiblePlaces = showResults
     ? reviewMockData.reviewPlaces.filter((place) => place.tags.includes(activeFilter))
-    : reviewMockData.recommendedPlaces;
+    : nearbyPlaces.length
+      ? nearbyPlaces
+      : reviewMockData.recommendedPlaces;
 
   const submitSearch = (event) => {
     event.preventDefault();
     setView(query.trim() ? "results" : "history");
+    setSelectedPlaceId(null);
   };
 
   const selectHistory = (historyItem) => {
     setQuery(historyItem.keyword);
     setView("results");
+    setSelectedPlaceId(null);
   };
 
   return h(
@@ -288,8 +324,19 @@ function ReviewScreen() {
                   activeFilter,
                   onSelect: setActiveFilter,
                 })
-              : h("h1", { key: "title", className: "review-section-title" }, `${reviewMockData.currentAreaLabel}의 인기 장소`),
-            h(ReviewPlaceList, { key: "places", places: visiblePlaces, showReviewText: showResults }),
+              : h("h1", { key: "title", className: "review-section-title" }, "현재 위치에서 인기 있는 장소"),
+            !showResults && nearbyStatus
+              ? h("p", { key: "status", className: "review-status", role: "status" }, nearbyStatus)
+              : null,
+            h(ReviewPlaceList, {
+              key: "places",
+              places: visiblePlaces,
+              showReviewText: showResults,
+              selectedPlaceId,
+              onSelect: (place) => {
+                setSelectedPlaceId(selectedPlaceId === place.id ? null : place.id);
+              },
+            }),
           ]
     )
   );
@@ -335,18 +382,30 @@ function ReviewFilterBar({ filters, activeFilter, onSelect }) {
   );
 }
 
-function ReviewPlaceList({ places, showReviewText }) {
+function ReviewPlaceList({ places, showReviewText, selectedPlaceId, onSelect }) {
   return h(
     "section",
     { className: "review-place-list", "aria-label": "리뷰 장소 목록" },
-    places.map((place) => h(ReviewPlaceRow, { key: place.id, place, showReviewText }))
+    places.map((place) =>
+      h(ReviewPlaceRow, {
+        key: place.id,
+        place,
+        showReviewText,
+        isSelected: selectedPlaceId === place.id,
+        onSelect,
+      })
+    )
   );
 }
 
-function ReviewPlaceRow({ place, showReviewText }) {
+function ReviewPlaceRow({ place, showReviewText, isSelected, onSelect }) {
   return h(
-    "article",
-    { className: "review-place-row" },
+    "button",
+    {
+      className: isSelected ? "review-place-row is-selected" : "review-place-row",
+      type: "button",
+      onClick: () => onSelect?.(place),
+    },
     h("div", { className: "review-thumb", "aria-hidden": "true" }),
     h(
       "div",
@@ -355,10 +414,21 @@ function ReviewPlaceRow({ place, showReviewText }) {
         "div",
         { className: "review-place-heading" },
         h("strong", null, place.name),
-        h("span", { className: "review-rating" }, `★ ${place.rating} (${place.reviewCount})`)
+        h(
+          "span",
+          { className: "review-rating" },
+          place.ratingLabel || `★ ${place.rating} (${place.reviewCount})`
+        )
       ),
       h("p", null, showReviewText ? place.reviewText : place.summary),
-      !showReviewText && place.aiReason ? h("small", null, place.aiReason) : null
+      !showReviewText && place.aiReason ? h("small", null, place.aiReason) : null,
+      isSelected
+        ? h(
+            "div",
+            { className: "review-place-detail" },
+            h("p", null, place.description || place.reviewText || place.summary)
+          )
+        : null
     )
   );
 }

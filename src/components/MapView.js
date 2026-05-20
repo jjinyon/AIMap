@@ -40,6 +40,7 @@ export function MapView({
     if (!mapRef.current) return;
 
     const center = toLatLng(location);
+    mapRef.current.setCenter(center);
 
     if (userMarkerRef.current) {
       userMarkerRef.current.setPosition(center);
