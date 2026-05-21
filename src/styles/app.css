@@ -639,6 +639,48 @@ button {
   background: #fffef9;
 }
 
+.auth-screen {
+  padding-top: 24px;
+}
+
+.auth-card {
+  display: grid;
+  justify-items: stretch;
+  padding-top: 6px;
+}
+
+.auth-card h1 {
+  margin: 0 0 6px;
+  color: #1f1f1f;
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.auth-card p,
+.account-email {
+  margin: 0 0 10px;
+  color: #6a6f69;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.auth-status {
+  margin: 0 0 8px;
+  color: #d14c38;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.text-action {
+  margin-top: 9px;
+  background: transparent;
+  color: #4b5563;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
 .panel-header {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 32px;
@@ -782,6 +824,10 @@ button {
   font-size: 0.78rem;
   font-weight: 900;
   box-shadow: 0 8px 16px rgba(196, 127, 36, 0.22);
+}
+
+.primary-action:disabled {
+  opacity: 0.62;
 }
 
 .settings-screen {

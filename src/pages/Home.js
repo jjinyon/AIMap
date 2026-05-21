@@ -1,6 +1,7 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 import { reviewMockData } from "../data/reviewMockData.js";
+import { getCurrentUser, loginUser, logoutUser, signupUser } from "../services/authService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 
@@ -10,8 +11,8 @@ const h = window.React.createElement;
 const navItems = [
   { id: "audio", label: "오디오", icon: "headphones" },
   { id: "route", label: "길찾기", icon: "cursor" },
-  { id: "map", label: "지도", icon: "foldedMap" },
   { id: "review", label: "리뷰", icon: "message" },
+  { id: "map", label: "지도", icon: "foldedMap" },
   { id: "account", label: "내 정보", icon: "profile" },
 ];
 
@@ -30,9 +31,56 @@ const routeOptions = [
 
 export function Home({ appStatus }) {
   const { location } = useCurrentLocation();
-  const [screen, setScreen] = useState("map");
+  const [authUser, setAuthUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [screen, setScreen] = useState("review");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadSession() {
+      try {
+        const { user } = await getCurrentUser();
+        if (ignore) return;
+
+        setAuthUser(user);
+        setScreen("review");
+      } catch {
+        if (ignore) return;
+
+        setAuthUser(null);
+        setScreen("auth");
+      } finally {
+        if (!ignore) setIsAuthLoading(false);
+      }
+    }
+
+    loadSession();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const completeAuth = (user) => {
+    setAuthUser(user);
+    setScreen("review");
+  };
+
+  const logout = async () => {
+    await logoutUser();
+    setAuthUser(null);
+    setScreen("auth");
+  };
 
   const openNav = (itemId) => {
+    if (isAuthLoading) return;
+
+    if (!authUser) {
+      setScreen("auth");
+      return;
+    }
+
     if (itemId === "audio") {
       setScreen("audio");
       return;
@@ -49,7 +97,7 @@ export function Home({ appStatus }) {
     }
 
     if (itemId === "account") {
-      setScreen("signup");
+      setScreen("account");
       return;
     }
 
@@ -66,7 +114,15 @@ export function Home({ appStatus }) {
       h(
         "div",
         { className: "phone-screen" },
-        renderScreen(screen, location, appStatus, setScreen),
+        renderScreen(screen, {
+          appStatus,
+          authUser,
+          isAuthLoading,
+          location,
+          onAuthenticated: completeAuth,
+          onLogout: logout,
+          setScreen,
+        }),
         h(BottomNav, {
           activeId: screen === "audio" ? "audio" : screen === "route" ? "route" : screen === "review" ? "review" : screen === "map" ? "map" : "account",
           onSelect: openNav,
@@ -76,17 +132,29 @@ export function Home({ appStatus }) {
   );
 }
 
-function renderScreen(screen, location, appStatus, setScreen) {
+function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, onAuthenticated, onLogout, setScreen }) {
+  if (isAuthLoading) {
+    return h(LoadingScreen);
+  }
+
+  if (!authUser) {
+    return h(AuthScreen, { onAuthenticated });
+  }
+
   if (screen === "audio") {
     return h(AudioScreen);
   }
 
   if (screen === "settings") {
-    return h(SettingsScreen, { onBack: () => setScreen("signup") });
+    return h(SettingsScreen, { onBack: () => setScreen("account") });
   }
 
-  if (screen === "signup") {
-    return h(SignupScreen, { onOpenSettings: () => setScreen("settings") });
+  if (screen === "account") {
+    return h(AccountScreen, {
+      user: authUser,
+      onOpenSettings: () => setScreen("settings"),
+      onLogout,
+    });
   }
 
   if (screen === "review") {
@@ -433,7 +501,144 @@ function ReviewPlaceRow({ place, showReviewText, isSelected, onSelect }) {
   );
 }
 
-function SignupScreen({ onOpenSettings }) {
+function LoadingScreen() {
+  return h(
+    "div",
+    { className: "screen-layer panel-screen auth-screen" },
+    h("section", { className: "auth-card" }, h("h1", null, "세션 확인 중"), h("p", null, "로그인 상태를 불러오고 있습니다."))
+  );
+}
+
+function AuthScreen({ onAuthenticated }) {
+  const [mode, setMode] = useState("signup");
+  const [nickname, setNickname] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSignup = mode === "signup";
+
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    setStatus("");
+    setIsSubmitting(true);
+
+    try {
+      const payload = isSignup
+        ? await signupUser({ nickname, email, password })
+        : await loginUser({ email, password });
+      onAuthenticated(payload.user);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return h(
+    "div",
+    { className: "screen-layer panel-screen auth-screen" },
+    h(
+      "header",
+      { className: "panel-header" },
+      h("span", { className: "header-spacer", "aria-hidden": "true" }),
+      h("h1", null, isSignup ? "회원가입" : "로그인"),
+      h("span", { className: "header-spacer", "aria-hidden": "true" })
+    ),
+    h(
+      "form",
+      { className: "auth-card", onSubmit: submitAuth },
+      h("div", { className: "coffee-avatar", "aria-hidden": "true" }),
+      isSignup
+        ? h(AuthField, {
+            label: "닉네임",
+            value: nickname,
+            placeholder: "닉네임을 입력하세요",
+            onChange: setNickname,
+          })
+        : null,
+      h(AuthField, {
+        label: "이메일",
+        value: email,
+        placeholder: "you@example.com",
+        type: "email",
+        icon: "mail",
+        onChange: setEmail,
+      }),
+      h(AuthField, {
+        label: "비밀번호",
+        value: password,
+        placeholder: "6자 이상 입력하세요",
+        type: "password",
+        icon: "lock",
+        onChange: setPassword,
+      }),
+      status ? h("p", { className: "auth-status", role: "alert" }, status) : null,
+      h(
+        "button",
+        { className: "primary-action", type: "submit", disabled: isSubmitting },
+        isSubmitting ? "처리 중..." : isSignup ? "이메일로 가입하기" : "로그인"
+      ),
+      h(
+        "button",
+        {
+          className: "text-action",
+          type: "button",
+          onClick: () => {
+            setMode(isSignup ? "login" : "signup");
+            setStatus("");
+          },
+        },
+        isSignup ? "이미 계정이 있나요? 로그인" : "처음인가요? 회원가입"
+      )
+    )
+  );
+}
+
+function AccountScreen({ user, onOpenSettings, onLogout }) {
+  const [status, setStatus] = useState("");
+
+  const submitLogout = async () => {
+    setStatus("");
+
+    try {
+      await onLogout();
+    } catch {
+      setStatus("로그아웃에 실패했습니다.");
+    }
+  };
+
+  return h(
+    "div",
+    { className: "screen-layer panel-screen account-screen" },
+    h(
+      "header",
+      { className: "panel-header" },
+      h("span", { className: "header-caption" }, "내 정보"),
+      h(
+        "button",
+        {
+          className: "icon-button",
+          type: "button",
+          "aria-label": "설정 열기",
+          onClick: onOpenSettings,
+        },
+        h(Icon, { name: "settings" })
+      )
+    ),
+    h(
+      "section",
+      { className: "profile-card", "aria-label": "사용자 정보" },
+      h("div", { className: "coffee-avatar", "aria-hidden": "true" }),
+      h("h1", null, `${user.nickname}님`),
+      h("p", { className: "account-email" }, user.email),
+      h("button", { className: "primary-action", type: "button", onClick: submitLogout }, "로그아웃"),
+      status ? h("p", { className: "auth-status", role: "alert" }, status) : null
+    )
+  );
+}
+
+function SignupScreen({ onOpenSettings, onSignupComplete }) {
   return h(
     "div",
     { className: "screen-layer panel-screen signup-screen" },
@@ -462,7 +667,7 @@ function SignupScreen({ onOpenSettings }) {
       h(ProfileField, { label: "닉네임", value: "닉네임을 입력하세요" }),
       h(ProfileField, { label: "이메일", value: "you@example.com", icon: "mail" }),
       h(ProfileField, { label: "비밀번호", value: "비밀번호를 입력하세요", icon: "lock" }),
-      h("button", { className: "primary-action", type: "button" }, "가입하기")
+      h("button", { className: "primary-action", type: "button", onClick: onSignupComplete }, "가입하기")
     )
   );
 }
@@ -584,6 +789,26 @@ function BottomNav({ activeId, onSelect }) {
         },
         h(Icon, { name: item.icon })
       )
+    )
+  );
+}
+
+function AuthField({ label, value, placeholder, type = "text", icon, onChange }) {
+  return h(
+    "label",
+    { className: "profile-field" },
+    h("span", null, label),
+    h(
+      "div",
+      { className: "field-control" },
+      h("input", {
+        value,
+        placeholder,
+        type,
+        required: true,
+        onChange: (event) => onChange(event.target.value),
+      }),
+      icon ? h(Icon, { name: icon }) : null
     )
   );
 }

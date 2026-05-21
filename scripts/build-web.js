@@ -11,7 +11,10 @@ const files = [
   "src/pages/Home.js",
   "src/components/MapView.js",
   "src/hooks/useCurrentLocation.js",
+  "src/services/authService.js",
+  "src/services/geocodingService.js",
   "src/services/mapService.js",
+  "src/services/routingService.js",
   "src/styles/app.css",
   "public/icon.svg"
 ];

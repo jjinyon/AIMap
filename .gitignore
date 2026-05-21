@@ -9,6 +9,7 @@ dist/
 # Local downloads / temporary folders
 .downloads/
 ai-map-app/
+.data/
 
 # Editor / IDE
 .idea/
