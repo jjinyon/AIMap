@@ -33,7 +33,7 @@ export function Home({ appStatus }) {
   const { location } = useCurrentLocation();
   const [authUser, setAuthUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [screen, setScreen] = useState("review");
+  const [screen, setScreen] = useState("auth");
 
   useEffect(() => {
     let ignore = false;
@@ -104,6 +104,8 @@ export function Home({ appStatus }) {
     setScreen("map");
   };
 
+  const shouldShowBottomNav = Boolean(authUser) && !isAuthLoading;
+
   return h(
     "main",
     { className: "app-shell" },
@@ -123,10 +125,12 @@ export function Home({ appStatus }) {
           onLogout: logout,
           setScreen,
         }),
-        h(BottomNav, {
-          activeId: screen === "audio" ? "audio" : screen === "route" ? "route" : screen === "review" ? "review" : screen === "map" ? "map" : "account",
-          onSelect: openNav,
-        })
+        shouldShowBottomNav
+          ? h(BottomNav, {
+              activeId: screen === "audio" ? "audio" : screen === "route" ? "route" : screen === "review" ? "review" : screen === "map" ? "map" : "account",
+              onSelect: openNav,
+            })
+          : null
       )
     )
   );
