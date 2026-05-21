@@ -4,10 +4,10 @@ export async function getCurrentUser() {
   });
 }
 
-export async function signupUser({ nickname, email, password }) {
+export async function signupUser({ nickname, email, password, city }) {
   return requestAuth("/api/auth/signup", {
     method: "POST",
-    body: JSON.stringify({ nickname, email, password }),
+    body: JSON.stringify({ nickname, email, password, city }),
   });
 }
 

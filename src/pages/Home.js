@@ -3,6 +3,7 @@ import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 import { reviewMockData } from "../data/reviewMockData.js";
 import { getCurrentUser, loginUser, logoutUser, signupUser } from "../services/authService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
+import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 
 const { useEffect, useState } = window.React;
@@ -27,6 +28,27 @@ const routeOptions = [
   "\uacc4\ub2e8 X",
   "\uc9c0\uc5ed \ub9cc\ub07d",
   "\ud37c\uc2a4\ub110",
+];
+
+const koreaCityOptions = [
+  "서울특별시",
+  "부산광역시",
+  "대구광역시",
+  "인천광역시",
+  "광주광역시",
+  "대전광역시",
+  "울산광역시",
+  "세종특별자치시",
+  "수원시",
+  "성남시",
+  "고양시",
+  "용인시",
+  "청주시",
+  "천안시",
+  "전주시",
+  "포항시",
+  "창원시",
+  "제주시",
 ];
 
 export function Home({ appStatus }) {
@@ -162,7 +184,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
   }
 
   if (screen === "review") {
-    return h(ReviewScreen, { location });
+    return h(ReviewScreen, { location, user: authUser });
   }
 
   return h(MapScreen, { location, appStatus, isRouteMode: screen === "route" });
@@ -308,13 +330,15 @@ function AudioScreen() {
   );
 }
 
-function ReviewScreen({ location }) {
+function ReviewScreen({ location, user }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("recommended");
   const [activeFilter, setActiveFilter] = useState(reviewMockData.filters[1]);
   const [nearbyPlaces, setNearbyPlaces] = useState([]);
   const [nearbyStatus, setNearbyStatus] = useState("현재 위치 주변 장소를 찾고 있습니다.");
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
+  const [reviewsByPlace, setReviewsByPlace] = useState({});
+  const [reviewStatus, setReviewStatus] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -352,6 +376,37 @@ function ReviewScreen({ location }) {
     : nearbyPlaces.length
       ? nearbyPlaces
       : reviewMockData.recommendedPlaces;
+  const selectedPlace = visiblePlaces.find((place) => place.id === selectedPlaceId);
+  const selectedReviews = selectedPlaceId ? reviewsByPlace[selectedPlaceId] || [] : [];
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadReviews() {
+      if (!selectedPlaceId) {
+        setReviewStatus("");
+        return;
+      }
+
+      setReviewStatus("리뷰를 불러오는 중입니다.");
+
+      try {
+        const { reviews } = await fetchPlaceReviews(selectedPlaceId);
+        if (ignore) return;
+
+        setReviewsByPlace((current) => ({ ...current, [selectedPlaceId]: reviews }));
+        setReviewStatus("");
+      } catch (error) {
+        if (!ignore) setReviewStatus(error.message);
+      }
+    }
+
+    loadReviews();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedPlaceId]);
 
   const submitSearch = (event) => {
     event.preventDefault();
@@ -363,6 +418,22 @@ function ReviewScreen({ location }) {
     setQuery(historyItem.keyword);
     setView("results");
     setSelectedPlaceId(null);
+  };
+
+  const submitPlaceReview = async ({ rating, content }) => {
+    if (!selectedPlace) return;
+
+    setReviewStatus("");
+    const { review } = await createPlaceReview({
+      placeId: selectedPlace.id,
+      placeName: selectedPlace.name,
+      rating,
+      content,
+    });
+    setReviewsByPlace((current) => ({
+      ...current,
+      [selectedPlace.id]: [review, ...(current[selectedPlace.id] || [])],
+    }));
   };
 
   return h(
@@ -409,8 +480,118 @@ function ReviewScreen({ location }) {
                 setSelectedPlaceId(selectedPlaceId === place.id ? null : place.id);
               },
             }),
+            selectedPlace
+              ? h(ReviewComposer, {
+                  key: "composer",
+                  place: selectedPlace,
+                  user,
+                  reviews: selectedReviews,
+                  status: reviewStatus,
+                  onSubmit: submitPlaceReview,
+                })
+              : null,
           ]
     )
+  );
+}
+
+function ReviewComposer({ place, user, reviews, status, onSubmit }) {
+  const [rating, setRating] = useState(5);
+  const [content, setContent] = useState("");
+  const [submitStatus, setSubmitStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitReview = async (event) => {
+    event.preventDefault();
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent) {
+      setSubmitStatus("리뷰 내용을 입력해 주세요.");
+      return;
+    }
+
+    setSubmitStatus("");
+    setIsSubmitting(true);
+
+    try {
+      await onSubmit({ rating, content: trimmedContent });
+      setContent("");
+      setRating(5);
+      setSubmitStatus("리뷰가 등록되었습니다.");
+    } catch (error) {
+      setSubmitStatus(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return h(
+    "section",
+    { className: "review-composer", "aria-label": `${place.name} 리뷰 작성` },
+    h(
+      "header",
+      { className: "review-composer-header" },
+      h("div", null, h("strong", null, place.name), h("span", null, user.city || "지역 미설정")),
+      h("span", { className: "review-count" }, `${reviews.length}개 리뷰`)
+    ),
+    h(
+      "form",
+      { className: "review-form", onSubmit: submitReview },
+      h(
+        "label",
+        null,
+        h("span", null, "별점"),
+        h(
+          "select",
+          {
+            value: rating,
+            onChange: (event) => setRating(Number(event.target.value)),
+          },
+          [5, 4, 3, 2, 1].map((score) => h("option", { key: score, value: score }, `${score}점`))
+        )
+      ),
+      h(
+        "label",
+        null,
+        h("span", null, "리뷰"),
+        h("textarea", {
+          value: content,
+          maxLength: 500,
+          placeholder: "이 장소에 대한 경험을 적어 주세요.",
+          onChange: (event) => setContent(event.target.value),
+        })
+      ),
+      h("button", { className: "primary-action", type: "submit", disabled: isSubmitting }, isSubmitting ? "등록 중..." : "리뷰 작성"),
+      submitStatus ? h("p", { className: "review-status", role: "status" }, submitStatus) : null
+    ),
+    status ? h("p", { className: "review-status", role: "status" }, status) : null,
+    h(
+      "div",
+      { className: "written-review-list" },
+      reviews.length
+        ? reviews.map((review) => h(WrittenReview, { key: review.id, review }))
+        : h("p", { className: "empty-review" }, "아직 작성된 리뷰가 없습니다.")
+    )
+  );
+}
+
+function WrittenReview({ review }) {
+  const dateLabel = new Date(review.createdAt).toLocaleDateString("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  return h(
+    "article",
+    { className: "written-review" },
+    h(
+      "div",
+      { className: "written-review-meta" },
+      h("strong", null, review.userNickname),
+      h("span", null, review.userCity ? `${review.userCity} · ${dateLabel}` : dateLabel),
+      h("b", null, `★ ${review.rating}`)
+    ),
+    h("p", null, review.content)
   );
 }
 
@@ -516,6 +697,7 @@ function LoadingScreen() {
 function AuthScreen({ onAuthenticated }) {
   const [mode, setMode] = useState("signup");
   const [nickname, setNickname] = useState("");
+  const [city, setCity] = useState(koreaCityOptions[0]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
@@ -529,7 +711,7 @@ function AuthScreen({ onAuthenticated }) {
 
     try {
       const payload = isSignup
-        ? await signupUser({ nickname, email, password })
+        ? await signupUser({ nickname, email, password, city })
         : await loginUser({ email, password });
       onAuthenticated(payload.user);
     } catch (error) {
@@ -559,6 +741,14 @@ function AuthScreen({ onAuthenticated }) {
             value: nickname,
             placeholder: "닉네임을 입력하세요",
             onChange: setNickname,
+          })
+        : null,
+      isSignup
+        ? h(AuthSelectField, {
+            label: "지역(시)",
+            value: city,
+            options: koreaCityOptions,
+            onChange: setCity,
           })
         : null,
       h(AuthField, {
@@ -636,6 +826,7 @@ function AccountScreen({ user, onOpenSettings, onLogout }) {
       h("div", { className: "coffee-avatar", "aria-hidden": "true" }),
       h("h1", null, `${user.nickname}님`),
       h("p", { className: "account-email" }, user.email),
+      user.city ? h("p", { className: "account-city" }, user.city) : null,
       h("button", { className: "primary-action", type: "button", onClick: submitLogout }, "로그아웃"),
       status ? h("p", { className: "auth-status", role: "alert" }, status) : null
     )
@@ -813,6 +1004,27 @@ function AuthField({ label, value, placeholder, type = "text", icon, onChange })
         onChange: (event) => onChange(event.target.value),
       }),
       icon ? h(Icon, { name: icon }) : null
+    )
+  );
+}
+
+function AuthSelectField({ label, value, options, onChange }) {
+  return h(
+    "label",
+    { className: "profile-field" },
+    h("span", null, label),
+    h(
+      "div",
+      { className: "field-control select-control" },
+      h(
+        "select",
+        {
+          value,
+          required: true,
+          onChange: (event) => onChange(event.target.value),
+        },
+        options.map((option) => h("option", { key: option, value: option }, option))
+      )
     )
   );
 }

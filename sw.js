@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-place-app-v11";
+const CACHE_NAME = "ai-place-app-v12";
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const CORE_ASSETS = [
   "./src/services/authService.js",
   "./src/services/geocodingService.js",
   "./src/services/mapService.js",
+  "./src/services/reviewService.js",
   "./src/services/routingService.js",
   "./src/styles/app.css",
 ];

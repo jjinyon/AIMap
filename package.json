@@ -7,7 +7,7 @@
     "dev": "node scripts/dev-server.js",
     "start": "node scripts/dev-server.js",
     "build": "node scripts/build-web.js",
-    "check": "node --check src/app.js && node --check src/pages/Home.js && node --check src/components/MapView.js && node --check src/hooks/useCurrentLocation.js && node --check src/services/authService.js && node --check src/services/mapService.js && node --check src/services/geocodingService.js && node --check src/services/routingService.js && node --check scripts/dev-server.js && node --check scripts/build-web.js && node --check sw.js",
+    "check": "node --check src/app.js && node --check src/pages/Home.js && node --check src/components/MapView.js && node --check src/hooks/useCurrentLocation.js && node --check src/services/authService.js && node --check src/services/mapService.js && node --check src/services/geocodingService.js && node --check src/services/reviewService.js && node --check src/services/routingService.js && node --check scripts/dev-server.js && node --check scripts/build-web.js && node --check sw.js",
     "android:init": "npm.cmd run build && npx.cmd cap add android",
     "android:sync": "npm.cmd run build && npx.cmd cap sync android",
     "android:open": "npm.cmd run android:sync && npx.cmd cap open android",

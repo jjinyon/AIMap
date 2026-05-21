@@ -27,6 +27,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/api/reviews")) {
+    await handleReviewRequest(request, response, requestUrl);
+    return;
+  }
+
   const pathname = decodeURIComponent(requestUrl.pathname);
   const safePath = path
     .normalize(pathname)
@@ -93,9 +98,10 @@ async function handleAuthRequest(request, response, requestUrl) {
       const email = normalizeEmail(body.email);
       const nickname = String(body.nickname || "").trim();
       const password = String(body.password || "");
+      const city = String(body.city || "").trim();
 
-      if (!nickname || !email || password.length < 6) {
-        sendJson(response, 400, { message: "닉네임, 이메일, 6자 이상 비밀번호를 입력해 주세요." });
+      if (!nickname || !email || password.length < 6 || !city) {
+        sendJson(response, 400, { message: "닉네임, 이메일, 지역, 6자 이상 비밀번호를 입력해 주세요." });
         return;
       }
 
@@ -108,6 +114,7 @@ async function handleAuthRequest(request, response, requestUrl) {
         id: crypto.randomUUID(),
         email,
         nickname,
+        city,
         passwordHash: hashPassword(password),
         createdAt: new Date().toISOString(),
       };
@@ -155,6 +162,64 @@ async function handleAuthRequest(request, response, requestUrl) {
   }
 }
 
+async function handleReviewRequest(request, response, requestUrl) {
+  try {
+    const user = getSessionUser(request);
+
+    if (!user) {
+      sendJson(response, 401, { message: "로그인이 필요합니다." });
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/reviews") {
+      const db = readDb();
+      const placeId = String(requestUrl.searchParams.get("placeId") || "").trim();
+      const reviews = db.reviews
+        .filter((review) => !placeId || review.placeId === placeId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .map(toPublicReview);
+
+      sendJson(response, 200, { reviews });
+      return;
+    }
+
+    if (request.method === "POST" && requestUrl.pathname === "/api/reviews") {
+      const body = await readJsonBody(request);
+      const db = readDb();
+      const placeId = String(body.placeId || "").trim();
+      const placeName = String(body.placeName || "").trim();
+      const content = String(body.content || "").trim();
+      const rating = Number(body.rating || 0);
+
+      if (!placeId || !placeName || !content || rating < 1 || rating > 5) {
+        sendJson(response, 400, { message: "장소, 별점, 리뷰 내용을 입력해 주세요." });
+        return;
+      }
+
+      const review = {
+        id: crypto.randomUUID(),
+        placeId,
+        placeName,
+        rating,
+        content: content.slice(0, 500),
+        userId: user.id,
+        userNickname: user.nickname,
+        userCity: user.city || "",
+        createdAt: new Date().toISOString(),
+      };
+
+      db.reviews.push(review);
+      writeDb(db);
+      sendJson(response, 201, { review: toPublicReview(review) });
+      return;
+    }
+
+    sendJson(response, 404, { message: "API를 찾을 수 없습니다." });
+  } catch {
+    sendJson(response, 500, { message: "서버 오류가 발생했습니다." });
+  }
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -183,7 +248,7 @@ function readDb() {
   fs.mkdirSync(dataDir, { recursive: true });
 
   if (!fs.existsSync(dbPath)) {
-    return { users: [], sessions: [] };
+    return { users: [], sessions: [], reviews: [] };
   }
 
   try {
@@ -191,9 +256,10 @@ function readDb() {
     return {
       users: Array.isArray(db.users) ? db.users : [],
       sessions: Array.isArray(db.sessions) ? db.sessions : [],
+      reviews: Array.isArray(db.reviews) ? db.reviews : [],
     };
   } catch {
-    return { users: [], sessions: [] };
+    return { users: [], sessions: [], reviews: [] };
   }
 }
 
@@ -248,6 +314,20 @@ function toPublicUser(user) {
     id: user.id,
     email: user.email,
     nickname: user.nickname,
+    city: user.city || "",
+  };
+}
+
+function toPublicReview(review) {
+  return {
+    id: review.id,
+    placeId: review.placeId,
+    placeName: review.placeName,
+    rating: review.rating,
+    content: review.content,
+    userNickname: review.userNickname,
+    userCity: review.userCity || "",
+    createdAt: review.createdAt,
   };
 }
 

@@ -561,6 +561,135 @@ button {
   border-top: 1px solid #eadfcb;
 }
 
+.review-composer {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  background: #fff9ec;
+}
+
+.review-composer-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.review-composer-header div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.review-composer-header strong {
+  overflow: hidden;
+  color: #1e1e1e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-composer-header span,
+.review-count {
+  color: #77766f;
+  font-size: 0.55rem;
+  font-weight: 800;
+}
+
+.review-form {
+  display: grid;
+  gap: 8px;
+}
+
+.review-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.review-form label > span {
+  color: #333333;
+  font-size: 0.56rem;
+  font-weight: 900;
+}
+
+.review-form select,
+.review-form textarea {
+  width: 100%;
+  border: 1px solid #e1d7c7;
+  border-radius: 8px;
+  background: #fffef9;
+  color: #222222;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.review-form select {
+  min-height: 32px;
+  padding: 0 8px;
+}
+
+.review-form textarea {
+  min-height: 68px;
+  resize: vertical;
+  padding: 8px;
+  line-height: 1.45;
+}
+
+.written-review-list {
+  display: grid;
+  gap: 8px;
+}
+
+.written-review {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid #eadfcb;
+}
+
+.written-review-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.written-review-meta strong,
+.written-review-meta span,
+.written-review-meta b,
+.empty-review {
+  margin: 0;
+  font-size: 0.55rem;
+  font-weight: 900;
+}
+
+.written-review-meta strong {
+  overflow: hidden;
+  color: #242424;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.written-review-meta span,
+.empty-review {
+  color: #77766f;
+}
+
+.written-review-meta b {
+  color: #f0ad30;
+}
+
+.written-review p {
+  margin: 0;
+  color: #464a46;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .review-history {
   display: grid;
   border-top: 1px solid #e6e6e0;
@@ -657,12 +786,21 @@ button {
 }
 
 .auth-card p,
-.account-email {
+.account-email,
+.account-city {
   margin: 0 0 10px;
   color: #6a6f69;
   font-size: 0.62rem;
   font-weight: 800;
   line-height: 1.4;
+}
+
+.account-city {
+  justify-self: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #b36e17;
 }
 
 .auth-status {
@@ -801,6 +939,21 @@ button {
   color: #222222;
   font-size: 0.68rem;
   font-weight: 700;
+}
+
+.field-control select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #222222;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.select-control {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .field-control input::placeholder {

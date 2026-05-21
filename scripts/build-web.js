@@ -14,6 +14,7 @@ const files = [
   "src/services/authService.js",
   "src/services/geocodingService.js",
   "src/services/mapService.js",
+  "src/services/reviewService.js",
   "src/services/routingService.js",
   "src/styles/app.css",
   "public/icon.svg"
