@@ -1,7 +1,9 @@
 import { MapView } from "../components/MapView.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
+import { audioGenreFilters } from "../data/audioEpisodeData.js";
 import { reviewMockData } from "../data/reviewMockData.js";
 import { getCurrentUser, loginUser, logoutUser, signupUser } from "../services/authService.js";
+import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
@@ -168,7 +170,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
   }
 
   if (screen === "audio") {
-    return h(AudioScreen);
+    return h(AudioScreen, { location });
   }
 
   if (screen === "settings") {
@@ -296,7 +298,233 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
   );
 }
 
-function AudioScreen() {
+function AudioScreen({ location }) {
+  const [episodes, setEpisodes] = useState([]);
+  const [selectedEpisode, setSelectedEpisode] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(true);
+  const [status, setStatus] = useState("");
+  const locationLabel = location?.label || "현재 위치";
+  const visibleGenres = audioGenreFilters.filter((genre) =>
+    episodes.some((episode) => episode.genre === genre)
+  );
+  const firstEpisode = episodes[0];
+
+  useEffect(() => {
+    return () => {
+      stopAudio();
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadLocationEpisodes() {
+      setIsLoadingEpisodes(true);
+      setStatus("현재 위치 주변의 설화와 역사 이야기를 찾는 중입니다.");
+
+      try {
+        let kakaoPlaces = [];
+
+        try {
+          kakaoPlaces = window.kakao?.maps?.services
+            ? await fetchNearbyReviewPlaces(location)
+            : [];
+        } catch {
+          kakaoPlaces = [];
+        }
+
+        if (ignore) return;
+
+        const nearbyEpisodes = getEpisodesNearLocation(location, kakaoPlaces);
+        setEpisodes(nearbyEpisodes);
+        setStatus(
+          nearbyEpisodes.length
+            ? ""
+            : "현재 위치 주변에서 들려줄 설화/역사 에피소드를 찾지 못했습니다."
+        );
+      } finally {
+        if (!ignore) setIsLoadingEpisodes(false);
+      }
+    }
+
+    loadLocationEpisodes();
+
+    return () => {
+      ignore = true;
+    };
+  }, [location.lat, location.lng]);
+
+  const playEpisode = (episode) => {
+    if (!("speechSynthesis" in window)) {
+      setStatus("이 브라우저에서는 오디오 낭독을 지원하지 않습니다.");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(`${episode.title}. ${episode.script}`);
+    utterance.lang = "ko-KR";
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    utterance.onend = () => setIsPlaying(false);
+    utterance.onerror = () => {
+      setIsPlaying(false);
+      setStatus("오디오 재생 중 문제가 발생했습니다.");
+    };
+
+    window.speechSynthesis.speak(utterance);
+    setSelectedEpisode(episode);
+    setIsPlaying(true);
+    setStatus("");
+  };
+
+  const togglePlay = () => {
+    if (!selectedEpisode) return;
+
+    if (isPlaying) {
+      window.speechSynthesis.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setIsPlaying(true);
+      return;
+    }
+
+    playEpisode(selectedEpisode);
+  };
+
+  const closeDetail = () => {
+    stopAudio();
+    setSelectedEpisode(null);
+    setIsPlaying(false);
+  };
+
+  if (selectedEpisode) {
+    return h(
+      "div",
+      { className: "screen-layer audio-screen audio-detail-screen" },
+      h("button", { className: "audio-title-button", type: "button", onClick: closeDetail }, `<${selectedEpisode.title}>`),
+      h(AudioHeroWave),
+      h(
+        "button",
+        {
+          className: isPlaying ? "audio-main-control is-playing" : "audio-main-control",
+          type: "button",
+          "aria-label": isPlaying ? "오디오 일시정지" : "오디오 재생",
+          onClick: togglePlay,
+        },
+        h("span", null)
+      ),
+      h(
+        "article",
+        { className: "audio-story-card" },
+        h("p", null, selectedEpisode.script),
+        h(
+          "a",
+          {
+            href: selectedEpisode.sourceUrl,
+            target: "_blank",
+            rel: "noreferrer",
+          },
+          `출처: ${selectedEpisode.sourceName}`
+        )
+      ),
+      status ? h("p", { className: "audio-status", role: "status" }, status) : null
+    );
+  }
+
+  return h(
+    "div",
+    { className: "screen-layer audio-screen audio-library-screen" },
+    h("p", { className: "audio-location-label" }, locationLabel),
+    h("h1", { className: "audio-section-title" }, "추천 에피소드"),
+    h(
+      "section",
+      { className: "episode-card-grid", "aria-label": "추천 에피소드" },
+      isLoadingEpisodes
+        ? h("p", { className: "audio-empty-state" }, "주변 이야기를 찾는 중")
+        : episodes.length
+          ? episodes.map((episode) =>
+              h(
+                "button",
+                {
+                  key: episode.id,
+                  className: `episode-card ${episode.tone}`,
+                  type: "button",
+                  onClick: () => playEpisode(episode),
+                },
+                [
+                  ...episode.shortTitle.split("\n").map((line) => h("span", { key: line }, line)),
+                  h("small", { key: "distance" }, `${episode.distanceKm}km`),
+                ]
+              )
+            )
+          : h("p", { className: "audio-empty-state" }, "주변 에피소드 없음")
+    ),
+    h("h2", { className: "audio-genre-title" }, "장르별"),
+    h(
+      "section",
+      { className: "audio-genre-grid", "aria-label": "장르별 이야기" },
+      (visibleGenres.length ? visibleGenres : audioGenreFilters).map((genre) =>
+        h("button", { key: genre, className: `audio-genre-chip ${genre}`, type: "button" }, genre)
+      )
+    ),
+    firstEpisode
+      ? h(
+          "section",
+          { className: "audio-mini-player", "aria-label": "현재 오디오" },
+          h(AudioMiniIcon),
+          h("strong", null, firstEpisode.title),
+          h(
+            "button",
+            {
+              className: "mini-play-button",
+              type: "button",
+              "aria-label": `${firstEpisode.title} 재생`,
+              onClick: () => playEpisode(firstEpisode),
+            },
+            h("span", null)
+          ),
+          h("button", { className: "mini-pause-button", type: "button", "aria-label": "일시정지", onClick: stopAudio }, [
+            h("span", { key: "1" }),
+            h("span", { key: "2" }),
+          ])
+        )
+      : null,
+    status ? h("p", { className: "audio-status", role: "status" }, status) : null
+  );
+}
+
+function stopAudio() {
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function AudioMiniIcon() {
+  return h("span", { className: "audio-mini-icon", "aria-hidden": "true" }, [
+    h("i", { key: "1" }),
+    h("i", { key: "2" }),
+    h("i", { key: "3" }),
+    h("i", { key: "4" }),
+  ]);
+}
+
+function AudioHeroWave() {
+  return h("div", { className: "audio-hero-wave", "aria-hidden": "true" }, [
+    h("span", { key: "1" }),
+    h("span", { key: "2" }),
+    h("span", { key: "3" }),
+    h("span", { key: "4" }),
+    h("span", { key: "5" }),
+  ]);
+}
+
+function LegacyAudioScreen() {
   return h(
     "div",
     { className: "screen-layer audio-screen" },
