@@ -46,7 +46,7 @@ export async function fetchNearbyReviewPlaces(location) {
     nearbyCategoryCodes.map((code) => searchNearbyCategory(code, location))
   );
 
-  return shufflePlaces(dedupePlaces(results.flat()))
+  return sortNearbyPlaces(dedupePlaces(results.flat()))
     .slice(0, 6)
     .map((place, index) => ({
       ...place,
@@ -115,8 +115,13 @@ function dedupePlaces(places) {
   });
 }
 
-function shufflePlaces(places) {
-  return [...places].sort(() => Math.random() - 0.5);
+function sortNearbyPlaces(places) {
+  return [...places].sort((a, b) => {
+    const distanceDiff = Number(a.distance || 0) - Number(b.distance || 0);
+    if (distanceDiff !== 0) return distanceDiff;
+
+    return String(a.name).localeCompare(String(b.name), "ko-KR");
+  });
 }
 
 function makePlaceSummary(place) {

@@ -253,11 +253,13 @@ function MapScreen({ location, appStatus }) {
   const [activeRouteOption, setActiveRouteOption] = useState("");
   const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(true);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
+  const [recommendedPlaces, setRecommendedPlaces] = useState([]);
   const hasDestination = Boolean(selectedSearchResult);
   const recommendedMapPlaces = showRecommendedPlaces
-    ? buildPlaces(location, "all", "balanced").map((place) => ({
+    ? recommendedPlaces.map((place) => ({
         ...place,
         markerKind: "recommended",
+        reason: place.aiReason || place.summary || place.address || "",
       }))
     : [];
   const savedMapPlaces = showSavedPlaces
@@ -269,6 +271,25 @@ function MapScreen({ location, appStatus }) {
       }))
     : [];
   const visibleMapPlaces = hasDestination ? [] : [...recommendedMapPlaces, ...savedMapPlaces];
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRecommendedPlaces() {
+      try {
+        const places = await fetchNearbyReviewPlaces(location);
+        if (!ignore) setRecommendedPlaces(places);
+      } catch {
+        if (!ignore) setRecommendedPlaces([]);
+      }
+    }
+
+    loadRecommendedPlaces();
+
+    return () => {
+      ignore = true;
+    };
+  }, [location.lat, location.lng]);
 
   const selectDestination = (destination) => {
     setSelectedSearchResult(destination);
