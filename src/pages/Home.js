@@ -7,16 +7,15 @@ import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
+import { buildPlaces } from "../services/mapService.js";
 
-const { useEffect, useState } = window.React;
+const { useEffect, useRef, useState } = window.React;
 const h = window.React.createElement;
 
 const navItems = [
   { id: "audio", label: "오디오", icon: "headphones" },
-  { id: "route", label: "길찾기", icon: "cursor" },
   { id: "review", label: "리뷰", icon: "message" },
   { id: "map", label: "지도", icon: "foldedMap" },
-  { id: "account", label: "내 정보", icon: "profile" },
 ];
 
 const audioOptions = [
@@ -26,10 +25,10 @@ const audioOptions = [
 ];
 
 const routeOptions = [
-  "\ube60\ub974\uac8c",
-  "\uacc4\ub2e8 X",
-  "\uc9c0\uc5ed \ub9cc\ub07d",
-  "\ud37c\uc2a4\ub110",
+  { id: "fast", label: "빠르게" },
+  { id: "stairs", label: "계단 X" },
+  { id: "local", label: "지역 만끽" },
+  { id: "personal", label: "퍼스널" },
 ];
 
 const koreaCityOptions = [
@@ -58,6 +57,9 @@ export function Home({ appStatus }) {
   const [authUser, setAuthUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [screen, setScreen] = useState("auth");
+  const [previousScreen, setPreviousScreen] = useState(null);
+  const [reviewCanGoBack, setReviewCanGoBack] = useState(false);
+  const [reviewBackSignal, setReviewBackSignal] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -69,6 +71,7 @@ export function Home({ appStatus }) {
 
         setAuthUser(user);
         setScreen("review");
+        setPreviousScreen(null);
       } catch {
         if (ignore) return;
 
@@ -89,12 +92,21 @@ export function Home({ appStatus }) {
   const completeAuth = (user) => {
     setAuthUser(user);
     setScreen("review");
+    setPreviousScreen(null);
   };
 
   const logout = async () => {
     await logoutUser();
     setAuthUser(null);
     setScreen("auth");
+    setPreviousScreen(null);
+  };
+
+  const navigateTo = (nextScreen) => {
+    if (nextScreen === screen) return;
+
+    setPreviousScreen(screen);
+    setScreen(nextScreen);
   };
 
   const openNav = (itemId) => {
@@ -106,29 +118,42 @@ export function Home({ appStatus }) {
     }
 
     if (itemId === "audio") {
-      setScreen("audio");
-      return;
-    }
-
-    if (itemId === "route") {
-      setScreen("route");
+      navigateTo("audio");
       return;
     }
 
     if (itemId === "review") {
-      setScreen("review");
+      navigateTo("review");
       return;
     }
 
-    if (itemId === "account") {
-      setScreen("account");
-      return;
-    }
-
-    setScreen("map");
+    navigateTo("map");
   };
 
+  const openAccount = () => {
+    if (!authUser || isAuthLoading) return;
+    navigateTo("account");
+  };
+
+  const goBack = () => {
+    if (!authUser || isAuthLoading) return;
+
+    if (screen === "review" && reviewCanGoBack) {
+      setReviewBackSignal((signal) => signal + 1);
+      return;
+    }
+
+    const fallbackScreen = screen === "review" ? "map" : "review";
+    setScreen(previousScreen || fallbackScreen);
+    setPreviousScreen(null);
+  };
+
+  useEffect(() => {
+    if (screen !== "review") setReviewCanGoBack(false);
+  }, [screen]);
+
   const shouldShowBottomNav = Boolean(authUser) && !isAuthLoading;
+  const shouldShowTopNav = shouldShowBottomNav;
 
   return h(
     "main",
@@ -147,11 +172,20 @@ export function Home({ appStatus }) {
           location,
           onAuthenticated: completeAuth,
           onLogout: logout,
-          setScreen,
+          setScreen: navigateTo,
+          reviewBackSignal,
+          onReviewBackStateChange: setReviewCanGoBack,
         }),
+        shouldShowTopNav
+          ? h(TopNav, {
+              title: getScreenTitle(screen),
+              onBack: goBack,
+              onSettings: openAccount,
+            })
+          : null,
         shouldShowBottomNav
           ? h(BottomNav, {
-              activeId: screen === "audio" ? "audio" : screen === "route" ? "route" : screen === "review" ? "review" : screen === "map" ? "map" : "account",
+              activeId: screen === "audio" ? "audio" : screen === "review" ? "review" : screen === "map" ? "map" : "",
               onSelect: openNav,
             })
           : null
@@ -160,7 +194,7 @@ export function Home({ appStatus }) {
   );
 }
 
-function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, onAuthenticated, onLogout, setScreen }) {
+function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, onAuthenticated, onLogout, setScreen, reviewBackSignal, onReviewBackStateChange }) {
   if (isAuthLoading) {
     return h(LoadingScreen);
   }
@@ -180,19 +214,35 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
   if (screen === "account") {
     return h(AccountScreen, {
       user: authUser,
-      onOpenSettings: () => setScreen("settings"),
       onLogout,
     });
   }
 
   if (screen === "review") {
-    return h(ReviewScreen, { location, user: authUser });
+    return h(ReviewScreen, {
+      location,
+      user: authUser,
+      backSignal: reviewBackSignal,
+      onBackStateChange: onReviewBackStateChange,
+    });
   }
 
-  return h(MapScreen, { location, appStatus, isRouteMode: screen === "route" });
+  return h(MapScreen, { location, appStatus });
 }
 
-function MapScreen({ location, appStatus, isRouteMode = false }) {
+function getScreenTitle(screen) {
+  const titles = {
+    audio: "오디오",
+    review: "리뷰",
+    map: "지도",
+    account: "프로필",
+    settings: "설정",
+  };
+
+  return titles[screen] || "지도";
+}
+
+function MapScreen({ location, appStatus }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState(null);
@@ -200,18 +250,46 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
   const [routeStatus, setRouteStatus] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [activeRouteOption, setActiveRouteOption] = useState("");
+  const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(true);
+  const [showSavedPlaces, setShowSavedPlaces] = useState(false);
+  const hasDestination = Boolean(selectedSearchResult);
+  const recommendedMapPlaces = showRecommendedPlaces
+    ? buildPlaces(location, "all", "balanced").map((place) => ({
+        ...place,
+        markerKind: "recommended",
+      }))
+    : [];
+  const savedMapPlaces = showSavedPlaces
+    ? buildPlaces(location, "culture", "quiet").map((place) => ({
+        ...place,
+        id: `saved-${place.id}`,
+        markerKind: "saved",
+        reason: "저장한 장소입니다.",
+      }))
+    : [];
+  const visibleMapPlaces = hasDestination ? [] : [...recommendedMapPlaces, ...savedMapPlaces];
 
-  const selectDestination = async (destination) => {
+  const selectDestination = (destination) => {
     setSelectedSearchResult(destination);
     setRoutePath([]);
-    setRouteStatus("경로를 찾는 중입니다.");
+    setActiveRouteOption("");
+    setRouteStatus("경로 옵션을 선택해 주세요.");
+  };
+
+  const findFastRoute = async () => {
+    if (!selectedSearchResult) return;
+
+    setRoutePath([]);
+    setActiveRouteOption("fast");
+    setRouteStatus("가장 빠른 도보 경로를 찾는 중입니다.");
 
     try {
-      const route = await findRoute(location, destination);
+      const route = await findRoute(location, selectedSearchResult);
       setRoutePath(route.points);
       setRouteStatus(formatRouteSummary(route));
     } catch {
-      setRouteStatus("현재 위치에서 목적지까지의 경로를 찾지 못했습니다.");
+      setRouteStatus("현재 위치에서 목적지까지의 도보 경로를 찾지 못했습니다.");
     }
   };
 
@@ -223,22 +301,24 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
       setSearchResults([]);
       setSelectedSearchResult(null);
       setRoutePath([]);
+      setActiveRouteOption("");
       return;
     }
 
     setIsSearching(true);
-    setSearchStatus("장소를 검색하는 중입니다.");
+    setSearchStatus("목적지를 검색하는 중입니다.");
 
     try {
       const results = await searchPlaces(trimmedQuery, location);
       setSearchResults(results);
-      setSearchStatus(results.length ? `${results.length}개의 장소를 찾았습니다.` : "검색 결과가 없습니다.");
+      setSearchStatus(results.length ? `${results.length}개의 목적지를 찾았습니다.` : "검색 결과가 없습니다.");
       if (results[0]) {
-        await selectDestination(results[0]);
+        selectDestination(results[0]);
       } else {
         setSelectedSearchResult(null);
         setRoutePath([]);
         setRouteStatus("");
+        setActiveRouteOption("");
       }
     } catch {
       setSearchStatus("검색에 실패했습니다. 잠시 후 다시 시도하세요.");
@@ -246,6 +326,7 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
       setSearchResults([]);
       setSelectedSearchResult(null);
       setRoutePath([]);
+      setActiveRouteOption("");
     } finally {
       setIsSearching(false);
     }
@@ -253,10 +334,10 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
 
   return h(
     "div",
-    { className: isRouteMode ? "screen-layer map-screen route-mode" : "screen-layer map-screen" },
+    { className: "screen-layer map-screen" },
     h(MapView, {
       location,
-      places: [],
+      places: visibleMapPlaces,
       selectedPlace: null,
       onSelectPlace: () => {},
       searchResults,
@@ -266,29 +347,36 @@ function MapScreen({ location, appStatus, isRouteMode = false }) {
     }),
     h(
       "div",
-      { className: "persistent-ui" },
-      isRouteMode
-        ? h(
-            "div",
-            { className: "route-option-strip", "aria-label": "\uacbd\ub85c \uc635\uc158" },
-            routeOptions.map((option) =>
-              h("button", { key: option, className: "route-option", type: "button" }, option)
-            )
-          )
-        : h("div", { className: "top-pills", "aria-hidden": "true" }, [
-            h("span", { key: "1" }, "내 위치"),
-            h("span", { key: "2" }, "주변 탐색"),
-            h("span", { key: "3" }, "AI 추천"),
-          ]),
+      { className: hasDestination ? "persistent-ui route-search-mode" : "persistent-ui map-browse-mode" },
       h(SearchBar, {
         value: query,
         isSearching,
         onChange: setQuery,
         onSubmit: submitSearch,
       }),
+      hasDestination
+        ? h(RouteOptionStrip, {
+            activeId: activeRouteOption,
+            onSelect: (optionId) => {
+              if (optionId === "fast") {
+                findFastRoute();
+                return;
+              }
+
+              setActiveRouteOption(optionId);
+              setRoutePath([]);
+              setRouteStatus("이 경로 옵션은 준비 중입니다.");
+            },
+          })
+        : h(MapPlaceToggles, {
+            showRecommendedPlaces,
+            showSavedPlaces,
+            onToggleRecommended: () => setShowRecommendedPlaces((value) => !value),
+            onToggleSaved: () => setShowSavedPlaces((value) => !value),
+          }),
       h(SearchResults, {
-        results: searchResults,
-        status: routeStatus || searchStatus,
+        results: hasDestination ? [] : searchResults,
+        status: hasDestination ? routeStatus : searchStatus,
         selectedId: selectedSearchResult?.id,
         onSelect: selectDestination,
       }),
@@ -558,7 +646,7 @@ function LegacyAudioScreen() {
   );
 }
 
-function ReviewScreen({ location, user }) {
+function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("recommended");
   const [activeFilter, setActiveFilter] = useState(reviewMockData.filters[1]);
@@ -567,6 +655,7 @@ function ReviewScreen({ location, user }) {
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [reviewsByPlace, setReviewsByPlace] = useState({});
   const [reviewStatus, setReviewStatus] = useState("");
+  const lastBackSignalRef = useRef(backSignal);
 
   useEffect(() => {
     let ignore = false;
@@ -606,6 +695,31 @@ function ReviewScreen({ location, user }) {
       : reviewMockData.recommendedPlaces;
   const selectedPlace = visiblePlaces.find((place) => place.id === selectedPlaceId);
   const selectedReviews = selectedPlaceId ? reviewsByPlace[selectedPlaceId] || [] : [];
+
+  useEffect(() => {
+    onBackStateChange?.(view !== "recommended" || Boolean(selectedPlaceId));
+  }, [onBackStateChange, selectedPlaceId, view]);
+
+  useEffect(() => {
+    if (lastBackSignalRef.current === backSignal) return;
+
+    lastBackSignalRef.current = backSignal;
+
+    if (selectedPlaceId) {
+      setSelectedPlaceId(null);
+      return;
+    }
+
+    if (view === "results") {
+      setView("history");
+      return;
+    }
+
+    if (view === "history") {
+      setView("recommended");
+      setQuery("");
+    }
+  }, [backSignal, selectedPlaceId, view]);
 
   useEffect(() => {
     let ignore = false;
@@ -1017,7 +1131,7 @@ function AuthScreen({ onAuthenticated }) {
   );
 }
 
-function AccountScreen({ user, onOpenSettings, onLogout }) {
+function AccountScreen({ user, onLogout }) {
   const [status, setStatus] = useState("");
 
   const submitLogout = async () => {
@@ -1033,21 +1147,6 @@ function AccountScreen({ user, onOpenSettings, onLogout }) {
   return h(
     "div",
     { className: "screen-layer panel-screen account-screen" },
-    h(
-      "header",
-      { className: "panel-header" },
-      h("span", { className: "header-caption" }, "내 정보"),
-      h(
-        "button",
-        {
-          className: "icon-button",
-          type: "button",
-          "aria-label": "설정 열기",
-          onClick: onOpenSettings,
-        },
-        h(Icon, { name: "settings" })
-      )
-    ),
     h(
       "section",
       { className: "profile-card", "aria-label": "사용자 정보" },
@@ -1146,7 +1245,7 @@ function SearchBar({ value, isSearching, onChange, onSubmit }) {
     },
     h("input", {
       "aria-label": "위치 검색",
-      placeholder: "장소를 검색하세요",
+      placeholder: "목적지를 검색하세요",
       type: "search",
       value,
       onChange: (event) => onChange(event.target.value),
@@ -1183,6 +1282,82 @@ function SearchResults({ results, status, selectedId, onSelect }) {
         h("strong", null, result.name),
         h("span", null, result.address || "주소 정보 없음")
       )
+    )
+  );
+}
+
+function RouteOptionStrip({ activeId, onSelect }) {
+  return h(
+    "section",
+    { className: "route-option-strip", "aria-label": "경로 옵션" },
+    routeOptions.map((option) =>
+      h(
+        "button",
+        {
+          key: option.id,
+          className: option.id === activeId ? "route-option active" : "route-option",
+          type: "button",
+          onClick: () => onSelect(option.id),
+        },
+        option.label
+      )
+    )
+  );
+}
+
+function MapPlaceToggles({ showRecommendedPlaces, showSavedPlaces, onToggleRecommended, onToggleSaved }) {
+  return h(
+    "section",
+    { className: "map-place-toggles", "aria-label": "지도 장소 표시" },
+    h(
+      "button",
+      {
+        className: showRecommendedPlaces ? "map-toggle-button active" : "map-toggle-button",
+        type: "button",
+        "aria-label": "추천 장소 표시",
+        "aria-pressed": showRecommendedPlaces,
+        onClick: onToggleRecommended,
+      },
+      h(Icon, { name: "star" })
+    ),
+    h(
+      "button",
+      {
+        className: showSavedPlaces ? "map-toggle-button active saved" : "map-toggle-button saved",
+        type: "button",
+        "aria-label": "저장 장소 표시",
+        "aria-pressed": showSavedPlaces,
+        onClick: onToggleSaved,
+      },
+      h(Icon, { name: "heart" })
+    )
+  );
+}
+
+function TopNav({ title, onBack, onSettings }) {
+  return h(
+    "header",
+    { className: "top-nav", "aria-label": "상단 메뉴" },
+    h(
+      "button",
+      {
+        className: "top-nav-button",
+        type: "button",
+        "aria-label": "뒤로가기",
+        onClick: onBack,
+      },
+      h(Icon, { name: "chevronLeft" })
+    ),
+    h("h1", null, title),
+    h(
+      "button",
+      {
+        className: "top-nav-button",
+        type: "button",
+        "aria-label": "프로필 열기",
+        onClick: onSettings,
+      },
+      h(Icon, { name: "settings" })
     )
   );
 }
@@ -1354,6 +1529,12 @@ function Icon({ name }) {
       h("path", { key: "1", d: "m12 3 9 5-9 5-9-5 9-5z" }),
       h("path", { key: "2", d: "m3 12 9 5 9-5" }),
       h("path", { key: "3", d: "m3 16 9 5 9-5" }),
+    ],
+    star: [
+      h("path", { key: "1", d: "m12 3 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 3z" }),
+    ],
+    heart: [
+      h("path", { key: "1", d: "M20.8 5.9a5.1 5.1 0 0 0-7.2 0L12 7.5l-1.6-1.6a5.1 5.1 0 0 0-7.2 7.2L12 21l8.8-7.9a5.1 5.1 0 0 0 0-7.2z" }),
     ],
     settings: [
       h("circle", { key: "1", cx: 12, cy: 12, r: 3 }),

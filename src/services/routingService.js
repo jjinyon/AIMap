@@ -1,3 +1,5 @@
+const WALKING_SPEED_METERS_PER_SECOND = 1.25;
+
 export async function findRoute(start, destination) {
   if (!start || !destination) return null;
 
@@ -29,7 +31,7 @@ export async function findRoute(start, destination) {
 
   return {
     distance: route.distance,
-    duration: route.duration,
+    duration: getWalkingDurationSeconds(route.distance),
     points: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
   };
 }
@@ -43,5 +45,9 @@ export function formatRouteSummary(route) {
       : `${Math.round(route.distance)}m`;
   const minutes = Math.max(1, Math.round(route.duration / 60));
 
-  return `목적지까지 ${distance}, 약 ${minutes}분`;
+  return `도보 ${distance}, 약 ${minutes}분`;
+}
+
+function getWalkingDurationSeconds(distanceMeters) {
+  return Math.max(60, Number(distanceMeters || 0) / WALKING_SPEED_METERS_PER_SECOND);
 }
