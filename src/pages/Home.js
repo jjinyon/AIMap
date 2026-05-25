@@ -1022,7 +1022,7 @@ function ReviewPlaceRow({ place, showReviewText, isSelected, onSelect }) {
       type: "button",
       onClick: () => onSelect?.(place),
     },
-    h("div", { className: "review-thumb", "aria-hidden": "true" }),
+    h(CategoryBadge, { place }),
     h(
       "div",
       { className: "review-place-copy" },
@@ -1047,6 +1047,79 @@ function ReviewPlaceRow({ place, showReviewText, isSelected, onSelect }) {
         : null
     )
   );
+}
+
+function CategoryBadge({ place }) {
+  const meta = getKakaoCategoryMeta(place);
+
+  return h(
+    "div",
+    {
+      className: `review-thumb category-${meta.tone}`,
+      "aria-label": meta.label,
+      title: `${meta.label}${meta.source ? ` · ${meta.source}` : ""}`,
+    },
+    h(CategoryIcon, { name: meta.icon }),
+    h("span", null, meta.label)
+  );
+}
+
+function getKakaoCategoryMeta(place = {}) {
+  const categoryCode = String(place.category || "").toUpperCase();
+  const categoryPath = String(place.categoryPath || place.type || "");
+  const categorySource = place.categoryPath || place.categoryName || place.type || "";
+
+  if (/술집|주점|호프|포차|바\b|와인|맥주|이자카야/.test(categoryPath)) {
+    return { label: "술집", icon: "drink", tone: "drink", source: categorySource };
+  }
+
+  const categories = {
+    FD6: { label: "음식점", icon: "food", tone: "food" },
+    CE7: { label: "카페", icon: "cafe", tone: "cafe" },
+    AT4: { label: "관광", icon: "attraction", tone: "attraction" },
+    CT1: { label: "문화", icon: "culture", tone: "culture" },
+    AD5: { label: "숙박", icon: "lodging", tone: "lodging" },
+    PK6: { label: "주차", icon: "parking", tone: "parking" },
+    CS2: { label: "편의점", icon: "shopping", tone: "convenience" },
+    MT1: { label: "마트", icon: "shopping", tone: "convenience" },
+    SW8: { label: "지하철", icon: "transit", tone: "transit" },
+  };
+
+  if (/문화재|유적|궁|성곽|사찰|절\b/.test(categoryPath)) {
+    return { label: "문화재", icon: "heritage", tone: "heritage", source: categorySource };
+  }
+
+  const meta = categories[categoryCode] || { label: place.categoryName || place.type || "장소", icon: "place", tone: "place" };
+  return { ...meta, source: categorySource };
+}
+
+function CategoryIcon({ name }) {
+  const common = {
+    width: 22,
+    height: 22,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": 2,
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "aria-hidden": "true",
+  };
+  const icons = {
+    food: [h("path", { key: "1", d: "M7 3v8" }), h("path", { key: "2", d: "M4 3v5a3 3 0 0 0 6 0V3" }), h("path", { key: "3", d: "M7 11v10" }), h("path", { key: "4", d: "M17 3v18" }), h("path", { key: "5", d: "M14 7h6" })],
+    drink: [h("path", { key: "1", d: "M6 3h12l-1 7a5 5 0 0 1-10 0L6 3z" }), h("path", { key: "2", d: "M12 15v6" }), h("path", { key: "3", d: "M8 21h8" })],
+    cafe: [h("path", { key: "1", d: "M5 8h11v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8z" }), h("path", { key: "2", d: "M16 10h2a2 2 0 0 1 0 4h-2" }), h("path", { key: "3", d: "M7 3v2" }), h("path", { key: "4", d: "M11 3v2" })],
+    attraction: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "m5 20 5-12 4 7 2-4 3 9" }), h("path", { key: "3", d: "M14 5h5l-2 2 2 2h-5V5z" })],
+    culture: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "M6 9h12" }), h("path", { key: "3", d: "M12 4 4 9h16l-8-5z" }), h("path", { key: "4", d: "M7 9v8" }), h("path", { key: "5", d: "M12 9v8" }), h("path", { key: "6", d: "M17 9v8" })],
+    heritage: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "M6 11h12" }), h("path", { key: "3", d: "M8 11V7l4-3 4 3v4" }), h("path", { key: "4", d: "M9 20v-5h6v5" })],
+    lodging: [h("path", { key: "1", d: "M4 11V5" }), h("path", { key: "2", d: "M4 16h16" }), h("path", { key: "3", d: "M4 21v-8h16v8" }), h("path", { key: "4", d: "M7 13v-2h4v2" })],
+    parking: [h("path", { key: "1", d: "M8 21V3h6a5 5 0 0 1 0 10H8" })],
+    shopping: [h("path", { key: "1", d: "M6 8h12l-1 13H7L6 8z" }), h("path", { key: "2", d: "M9 8a3 3 0 0 1 6 0" })],
+    transit: [h("rect", { key: "1", x: 6, y: 3, width: 12, height: 15, rx: 3 }), h("path", { key: "2", d: "M8 21h8" }), h("path", { key: "3", d: "M9 7h6" }), h("path", { key: "4", d: "M9 13h.01" }), h("path", { key: "5", d: "M15 13h.01" })],
+    place: [h("path", { key: "1", d: "M12 21s7-6.2 7-12A7 7 0 1 0 5 9c0 5.8 7 12 7 12z" }), h("circle", { key: "2", cx: 12, cy: 9, r: 2 })],
+  };
+
+  return h("svg", common, icons[name] || icons.place);
 }
 
 function LoadingScreen() {

@@ -897,10 +897,63 @@ button {
 }
 
 .review-thumb {
+  display: grid;
+  place-items: center;
+  gap: 2px;
   width: 50px;
   aspect-ratio: 1;
-  border: 1px solid #555555;
-  background: #d9d9d9;
+  border: 1px solid rgba(31, 41, 55, 0.18);
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.review-thumb svg {
+  display: block;
+}
+
+.review-thumb span {
+  max-width: 44px;
+  overflow: hidden;
+  font-size: 0.44rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-thumb.category-food {
+  background: #fff1e8;
+  color: #b45309;
+}
+
+.review-thumb.category-drink {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.review-thumb.category-cafe {
+  background: #f5eadb;
+  color: #8b5e34;
+}
+
+.review-thumb.category-attraction,
+.review-thumb.category-heritage {
+  background: #e8f7ef;
+  color: #047857;
+}
+
+.review-thumb.category-culture {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
+.review-thumb.category-lodging,
+.review-thumb.category-parking,
+.review-thumb.category-convenience,
+.review-thumb.category-transit {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 .review-place-copy {

@@ -8,6 +8,14 @@ export const DEFAULT_RECOMMENDATION_WEIGHTS = {
   crowd: 0.9,
 };
 
+export const DEFAULT_NORMALIZATION_LIMITS = {
+  maxRating: 5,
+  maxReviewCount: 500,
+  maxDistanceKm: 5,
+  minTemperature: -10,
+  maxTemperature: 35,
+};
+
 const CATEGORY_ALIASES = {
   FD6: "food",
   CE7: "cafe",
@@ -55,31 +63,38 @@ const TIME_RULES = {
 
 // S_i = w_dD_i + w_rR_i + w_lL_i + w_pP_i + w_wW_i + w_tT_i + w_cC_i
 // 각 하위 점수 함수는 독립적으로 테스트할 수 있도록 export합니다.
-export function calculateRecommendationScore(place, context = {}, weights = DEFAULT_RECOMMENDATION_WEIGHTS) {
-  const normalizedPlace = normalizePlace(place, context.userLocation);
+export function calculateRecommendationScore(
+  place,
+  context = {},
+  weights = DEFAULT_RECOMMENDATION_WEIGHTS,
+  normalizationLimits = DEFAULT_NORMALIZATION_LIMITS
+) {
+  const normalizedInput = normalizeRecommendationInput(place, context, weights, normalizationLimits);
+  const { place: normalizedPlace, context: normalizedContext, weights: normalizedWeights } = normalizedInput;
   const components = {
-    distance: calculateDistanceScore(normalizedPlace.distanceKm),
-    review: calculateReviewScore(normalizedPlace.rating, normalizedPlace.reviewCount),
+    distance: calculateDistanceScore(normalizedPlace.distanceKm, normalizedInput.limits),
+    review: calculateReviewScore(normalizedPlace.rating, normalizedPlace.reviewCount, normalizedInput.limits),
     local: calculateLocalScore(normalizedPlace.localReviewCount, normalizedPlace.reviewCount),
-    preference: calculatePreferenceScore(context.userPreference, normalizedPlace),
-    weather: calculateWeatherScore(context.weather, normalizedPlace.placeType),
-    time: calculateTimeScore(context.currentTime, normalizedPlace),
-    crowd: calculateCrowdScore(normalizedPlace.crowdLevel),
+    preference: calculatePreferenceScore(normalizedContext.userPreference, normalizedPlace),
+    weather: calculateWeatherScore(normalizedContext.weather, normalizedPlace.placeType),
+    time: calculateTimeScore(normalizedContext.currentTime, normalizedPlace),
+    crowd: calculateCrowdScore(normalizedPlace.normalizedMetrics.crowdLevel),
   };
 
   const score =
-    weights.distance * components.distance +
-    weights.review * components.review +
-    weights.local * components.local +
-    weights.preference * components.preference +
-    weights.weather * components.weather +
-    weights.time * components.time +
-    weights.crowd * components.crowd;
+    normalizedWeights.distance * components.distance +
+    normalizedWeights.review * components.review +
+    normalizedWeights.local * components.local +
+    normalizedWeights.preference * components.preference +
+    normalizedWeights.weather * components.weather +
+    normalizedWeights.time * components.time +
+    normalizedWeights.crowd * components.crowd;
 
   return {
     ...normalizedPlace,
     recommendationScore: roundScore(score),
     recommendationComponents: components,
+    recommendationInput: normalizedInput,
   };
 }
 
@@ -88,9 +103,13 @@ export function calculateRecommendationScore(place, context = {}, weights = DEFA
 export function recommendPlaces(places, context = {}, options = {}) {
   const limit = Number.isFinite(options.limit) ? options.limit : 10;
   const weights = { ...DEFAULT_RECOMMENDATION_WEIGHTS, ...(options.weights || {}) };
+  const normalizationLimits = {
+    ...DEFAULT_NORMALIZATION_LIMITS,
+    ...(options.normalizationLimits || {}),
+  };
 
   return sortRecommendedPlaces(
-    places.map((place) => calculateRecommendationScore(place, context, weights))
+    places.map((place) => calculateRecommendationScore(place, context, weights, normalizationLimits))
   ).slice(0, limit);
 }
 
@@ -139,23 +158,25 @@ export function recommendKakaoPlaces(kakaoPlaces, context = {}, metricsByPlaceId
   return recommendPlaces(places, context, options);
 }
 
-export function calculateDistanceScore(distanceKm = 0) {
-  const distance = Math.max(0, Number(distanceKm) || 0);
-  return roundScore(1 / (1 + distance));
+export function calculateDistanceScore(distanceKm = 0, normalizationLimits = DEFAULT_NORMALIZATION_LIMITS) {
+  const limits = normalizeNormalizationLimits(normalizationLimits);
+  const normalizedDistance = normalizeLinear(clampMin(distanceKm, 0), 0, limits.maxDistanceKm);
+  return roundScore(1 - normalizedDistance);
 }
 
-export function calculateReviewScore(rating = 0, reviewCount = 0) {
-  const safeRating = clamp(Number(rating) || 0, 0, 5);
-  const safeReviewCount = Math.max(0, Number(reviewCount) || 0);
+export function calculateReviewScore(rating = 0, reviewCount = 0, normalizationLimits = DEFAULT_NORMALIZATION_LIMITS) {
+  const limits = normalizeNormalizationLimits(normalizationLimits);
+  const ratingScore = normalizeLinear(rating, 0, limits.maxRating);
+  const reviewCountScore = normalizeLog(reviewCount, limits.maxReviewCount);
 
-  return roundScore(safeRating * Math.log1p(safeReviewCount));
+  return roundScore(ratingScore * reviewCountScore);
 }
 
 export function calculateLocalScore(localReviewCount = 0, totalReviewCount = 0) {
-  const total = Math.max(0, Number(totalReviewCount) || 0);
+  const total = clampMin(totalReviewCount, 0);
   if (total === 0) return 0;
 
-  return roundScore(clamp((Number(localReviewCount) || 0) / total, 0, 1));
+  return roundScore(clamp(clampMin(localReviewCount, 0) / total, 0, 1));
 }
 
 export function calculatePreferenceScore(userPreference = {}, place) {
@@ -195,17 +216,41 @@ export function calculateCrowdScore(crowdLevel = 0.5) {
   return roundScore(1 - clamp(Number(crowdLevel) || 0, 0, 1));
 }
 
-export function normalizePlace(place, userLocation) {
+export function normalizeRecommendationInput(
+  place,
+  context = {},
+  weights = DEFAULT_RECOMMENDATION_WEIGHTS,
+  normalizationLimits = DEFAULT_NORMALIZATION_LIMITS
+) {
+  const limits = normalizeNormalizationLimits(normalizationLimits);
+  const normalizedContext = normalizeRecommendationContext(context, limits);
+
+  return {
+    place: normalizePlace(place, normalizedContext.userLocation, limits),
+    context: normalizedContext,
+    weights: normalizeRecommendationWeights(weights),
+    limits,
+  };
+}
+
+export function normalizePlace(place = {}, userLocation, normalizationLimits = DEFAULT_NORMALIZATION_LIMITS) {
+  const limits = normalizeNormalizationLimits(normalizationLimits);
   const category = normalizeCategory(place.category || place.categoryCode || place.type);
   const lat = Number(place.lat);
   const lng = Number(place.lng);
   const hasCoordinate = Number.isFinite(lat) && Number.isFinite(lng);
-  const distanceKm =
+  const distanceKm = clampMin(
     Number.isFinite(Number(place.distanceKm))
       ? Number(place.distanceKm)
       : hasCoordinate && userLocation?.lat && userLocation?.lng
         ? getDistanceKm(userLocation, { lat, lng })
-        : Number(place.distance || 0) / 1000;
+        : Number(place.distance || 0) / 1000,
+    0
+  );
+  const rating = clamp(Number(place.rating) || 0, 0, limits.maxRating);
+  const reviewCount = clampMin(Number(place.reviewCount) || 0, 0);
+  const localReviewCount = clamp(Number(place.localReviewCount) || 0, 0, reviewCount);
+  const crowdLevel = clamp(Number(place.crowdLevel ?? 0.5), 0, 1);
 
   return {
     ...place,
@@ -217,11 +262,44 @@ export function normalizePlace(place, userLocation) {
     lat,
     lng,
     distanceKm,
-    rating: Number(place.rating) || 0,
-    reviewCount: Number(place.reviewCount) || 0,
-    localReviewCount: Number(place.localReviewCount) || 0,
-    crowdLevel: clamp(Number(place.crowdLevel ?? 0.5), 0, 1),
+    rating,
+    reviewCount,
+    localReviewCount,
+    crowdLevel,
+    normalizedMetrics: {
+      distance: normalizeLinear(distanceKm, 0, limits.maxDistanceKm),
+      rating: normalizeLinear(rating, 0, limits.maxRating),
+      reviewCount: normalizeLog(reviewCount, limits.maxReviewCount),
+      localReviewRatio: reviewCount === 0 ? 0 : roundScore(localReviewCount / reviewCount),
+      crowdLevel,
+    },
   };
+}
+
+export function normalizeRecommendationContext(context = {}, normalizationLimits = DEFAULT_NORMALIZATION_LIMITS) {
+  const limits = normalizeNormalizationLimits(normalizationLimits);
+  const weather = normalizeWeatherResponse(context.weather || {});
+
+  return {
+    ...context,
+    userLocation: normalizeLocation(context.userLocation),
+    userPreference: normalizeUserPreference(context.userPreference),
+    weather: {
+      ...weather,
+      precipitationProbability: clamp(weather.precipitationProbability, 0, 1),
+      normalizedTemperature: normalizeLinear(weather.temperature, limits.minTemperature, limits.maxTemperature),
+    },
+    currentTime: normalizeCurrentTime(context.currentTime),
+  };
+}
+
+export function normalizeRecommendationWeights(weights = DEFAULT_RECOMMENDATION_WEIGHTS) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_RECOMMENDATION_WEIGHTS).map(([key, fallback]) => {
+      const value = Number(weights[key]);
+      return [key, Number.isFinite(value) && value >= 0 ? value : fallback];
+    })
+  );
 }
 
 // 날씨 API 연동용 어댑터입니다. 클라이언트에 API 키를 직접 두지 말고
@@ -251,8 +329,8 @@ export function normalizeWeatherResponse(payload = {}) {
 
   return {
     condition: payload.condition || firstWeather?.main || firstWeather?.description || "default",
-    temperature: Number(payload.temperature ?? payload.main?.temp ?? 20),
-    precipitationProbability: Number(payload.precipitationProbability ?? payload.pop ?? 0),
+    temperature: toFiniteNumber(payload.temperature ?? payload.main?.temp, 20),
+    precipitationProbability: toFiniteNumber(payload.precipitationProbability ?? payload.pop, 0),
   };
 }
 
@@ -305,6 +383,47 @@ function parseHour(currentTime) {
   return new Date().getHours();
 }
 
+function normalizeNormalizationLimits(limits = {}) {
+  const minTemperature = toFiniteNumber(limits.minTemperature, DEFAULT_NORMALIZATION_LIMITS.minTemperature);
+  const maxTemperature = toFiniteNumber(limits.maxTemperature, DEFAULT_NORMALIZATION_LIMITS.maxTemperature);
+
+  return {
+    maxRating: clampMin(toFiniteNumber(limits.maxRating, DEFAULT_NORMALIZATION_LIMITS.maxRating), 1),
+    maxReviewCount: clampMin(
+      toFiniteNumber(limits.maxReviewCount, DEFAULT_NORMALIZATION_LIMITS.maxReviewCount),
+      1
+    ),
+    maxDistanceKm: clampMin(toFiniteNumber(limits.maxDistanceKm, DEFAULT_NORMALIZATION_LIMITS.maxDistanceKm), 0.1),
+    minTemperature,
+    maxTemperature: maxTemperature > minTemperature ? maxTemperature : minTemperature + 1,
+  };
+}
+
+function normalizeLocation(location = {}) {
+  const lat = Number(location.lat);
+  const lng = Number(location.lng);
+
+  return {
+    ...location,
+    lat: Number.isFinite(lat) ? clamp(lat, -90, 90) : undefined,
+    lng: Number.isFinite(lng) ? clamp(lng, -180, 180) : undefined,
+  };
+}
+
+function normalizeUserPreference(userPreference = {}) {
+  return {
+    ...userPreference,
+    categories: toArray(userPreference.categories).map(normalizeCategory).filter(Boolean),
+    tags: toArray(userPreference.tags).map(normalizeToken).filter(Boolean),
+  };
+}
+
+function normalizeCurrentTime(currentTime = new Date()) {
+  const parsedHour = parseHour(currentTime);
+  const hour = Number.isFinite(parsedHour) ? clamp(Math.floor(parsedHour), 0, 23) : new Date().getHours();
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
 function normalizeCategory(value = "") {
   const token = normalizeToken(value);
   return CATEGORY_ALIASES[token] || token || "unknown";
@@ -321,6 +440,26 @@ function toArray(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampMin(value, min) {
+  return Math.max(min, Number(value) || 0);
+}
+
+function normalizeLinear(value, min, max) {
+  if (max <= min) return 0;
+  return roundScore(clamp((Number(value) - min) / (max - min), 0, 1));
+}
+
+function normalizeLog(value, max) {
+  const safeValue = clampMin(value, 0);
+  const safeMax = clampMin(max, 1);
+  return roundScore(clamp(Math.log1p(safeValue) / Math.log1p(safeMax), 0, 1));
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function roundScore(value) {

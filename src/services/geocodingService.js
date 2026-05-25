@@ -97,6 +97,8 @@ function normalizeKakaoPlace(place) {
     lng: Number(place.x),
     type: place.category_group_name || place.category_name || "장소",
     category: place.category_group_code || "",
+    categoryName: place.category_group_name || "",
+    categoryPath: place.category_name || "",
     distance: Number(place.distance || 0),
     phone: place.phone || "",
     url: place.place_url || "",
