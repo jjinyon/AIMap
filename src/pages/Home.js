@@ -8,6 +8,7 @@ import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingServ
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 import { buildPlaces } from "../services/mapService.js";
+import { recommendKakaoPlacesWithReviewData } from "../services/recommendation/index.js";
 
 const { useEffect, useRef, useState } = window.React;
 const h = window.React.createElement;
@@ -242,6 +243,25 @@ function getScreenTitle(screen) {
   return titles[screen] || "지도";
 }
 
+function formatRecommendedPlace(place) {
+  const reviewCount = Number(place.reviewCount || 0);
+  const rating = Number(place.rating || place.googleRating || place.localRating || 0);
+  const ratingLabel = reviewCount
+    ? `★ ${rating.toFixed(1)} (${reviewCount})`
+    : place.ratingLabel || (place.distance ? `${place.distance}m` : "");
+
+  return {
+    ...place,
+    categoryCode: place.categoryCode || place.kakaoCategoryCode || place.category,
+    ratingLabel,
+    aiReason:
+      place.aiReason ||
+      (place.googleReviewCount
+        ? `Google ${place.googleReviewCount} reviews + local ${place.localReviewCount || 0}`
+        : place.summary || place.address || ""),
+  };
+}
+
 function MapScreen({ location, appStatus }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -278,7 +298,12 @@ function MapScreen({ location, appStatus }) {
     async function loadRecommendedPlaces() {
       try {
         const places = await fetchNearbyReviewPlaces(location);
-        if (!ignore) setRecommendedPlaces(places);
+        const recommended = await recommendKakaoPlacesWithReviewData(
+          places,
+          { userLocation: location },
+          { limit: 10, metricsLimit: 10 }
+        );
+        if (!ignore) setRecommendedPlaces(recommended.map(formatRecommendedPlace));
       } catch {
         if (!ignore) setRecommendedPlaces([]);
       }
@@ -686,10 +711,11 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
 
       try {
         const places = await fetchNearbyReviewPlaces(location);
+        const recommended = await recommendKakaoPlacesWithReviewData(places, { userLocation: location }, { limit: 10, metricsLimit: 10 });
         if (ignore) return;
 
-        setNearbyPlaces(places);
-        setNearbyStatus(places.length ? "" : "주변에서 보여줄 장소를 찾지 못했습니다.");
+        setNearbyPlaces(recommended.map(formatRecommendedPlace));
+        setNearbyStatus(recommended.length ? "" : "주변에서 보여줄 장소를 찾지 못했습니다.");
         setSelectedPlaceId(null);
       } catch {
         if (ignore) return;
@@ -1065,9 +1091,9 @@ function CategoryBadge({ place }) {
 }
 
 function getKakaoCategoryMeta(place = {}) {
-  const categoryCode = String(place.category || "").toUpperCase();
-  const categoryPath = String(place.categoryPath || place.type || "");
-  const categorySource = place.categoryPath || place.categoryName || place.type || "";
+  const categoryCode = String(place.categoryCode || place.kakaoCategoryCode || place.category || "").toUpperCase();
+  const categoryPath = String([place.categoryPath, place.categoryName, place.type, ...(place.tags || [])].filter(Boolean).join(" "));
+  const categorySource = place.categoryPath || place.categoryName || place.type || place.category || "";
 
   if (/술집|주점|호프|포차|바\b|와인|맥주|이자카야/.test(categoryPath)) {
     return { label: "술집", icon: "drink", tone: "drink", source: categorySource };
@@ -1089,8 +1115,50 @@ function getKakaoCategoryMeta(place = {}) {
     return { label: "문화재", icon: "heritage", tone: "heritage", source: categorySource };
   }
 
+  Object.assign(categories, {
+    FOOD: { label: "음식", icon: "food", tone: "food" },
+    CAFE: { label: "카페", icon: "cafe", tone: "cafe" },
+    CULTURE: { label: "문화", icon: "culture", tone: "culture" },
+    PARK: { label: "공원", icon: "park", tone: "park" },
+    CONVENIENCE: { label: "편의", icon: "shopping", tone: "convenience" },
+  });
+
+  Object.assign(categories, {
+    MT1: { label: "mart", icon: "cart", tone: "mart" },
+    PS3: { label: "school", icon: "school", tone: "school" },
+    SC4: { label: "school", icon: "school", tone: "school" },
+    AC5: { label: "academy", icon: "school", tone: "school" },
+    OL7: { label: "gas", icon: "gas", tone: "gas" },
+    BK9: { label: "bank", icon: "bank", tone: "bank" },
+    HP8: { label: "hospital", icon: "medical", tone: "medical" },
+    PM9: { label: "pharmacy", icon: "pharmacy", tone: "pharmacy" },
+  });
+
   const meta = categories[categoryCode] || { label: place.categoryName || place.type || "장소", icon: "place", tone: "place" };
-  return { ...meta, source: categorySource };
+  return { ...inferCategoryMeta(categoryPath, meta), source: categorySource };
+}
+
+function inferCategoryMeta(text = "", fallback) {
+  const value = String(text).toLowerCase();
+
+  if (/카페|커피|cafe|coffee/.test(value)) return { label: "카페", icon: "cafe", tone: "cafe" };
+  if (/음식|맛집|식당|한식|중식|일식|양식|분식|restaurant|food/.test(value)) return { label: "음식", icon: "food", tone: "food" };
+  if (/술집|주점|호프|bar|pub/.test(value)) return { label: "술집", icon: "drink", tone: "drink" };
+  if (/관광|명소|여행|attraction|tour/.test(value)) return { label: "관광", icon: "attraction", tone: "attraction" };
+  if (/문화|공연|전시|museum|culture|theater/.test(value)) return { label: "문화", icon: "culture", tone: "culture" };
+  if (/공원|park/.test(value)) return { label: "공원", icon: "park", tone: "park" };
+  if (/숙박|호텔|hotel|lodging/.test(value)) return { label: "숙박", icon: "lodging", tone: "lodging" };
+  if (/주차|parking/.test(value)) return { label: "주차", icon: "parking", tone: "parking" };
+  if (/편의점|convenience/.test(value)) return { label: "편의", icon: "shopping", tone: "convenience" };
+  if (/마트|market|mart/.test(value)) return { label: "마트", icon: "cart", tone: "mart" };
+  if (/지하철|버스|교통|subway|transit|station/.test(value)) return { label: "교통", icon: "transit", tone: "transit" };
+  if (/학교|학원|school|academy/.test(value)) return { label: "학교", icon: "school", tone: "school" };
+  if (/병원|hospital|medical/.test(value)) return { label: "병원", icon: "medical", tone: "medical" };
+  if (/약국|pharmacy/.test(value)) return { label: "약국", icon: "pharmacy", tone: "pharmacy" };
+  if (/은행|bank/.test(value)) return { label: "은행", icon: "bank", tone: "bank" };
+  if (/주유|gas/.test(value)) return { label: "주유", icon: "gas", tone: "gas" };
+
+  return fallback;
 }
 
 function CategoryIcon({ name }) {
@@ -1112,9 +1180,16 @@ function CategoryIcon({ name }) {
     attraction: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "m5 20 5-12 4 7 2-4 3 9" }), h("path", { key: "3", d: "M14 5h5l-2 2 2 2h-5V5z" })],
     culture: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "M6 9h12" }), h("path", { key: "3", d: "M12 4 4 9h16l-8-5z" }), h("path", { key: "4", d: "M7 9v8" }), h("path", { key: "5", d: "M12 9v8" }), h("path", { key: "6", d: "M17 9v8" })],
     heritage: [h("path", { key: "1", d: "M4 20h16" }), h("path", { key: "2", d: "M6 11h12" }), h("path", { key: "3", d: "M8 11V7l4-3 4 3v4" }), h("path", { key: "4", d: "M9 20v-5h6v5" })],
+    park: [h("path", { key: "1", d: "M12 21V9" }), h("path", { key: "2", d: "M8 13a4 4 0 1 1 8 0" }), h("path", { key: "3", d: "M6 17h12" }), h("path", { key: "4", d: "m9 21 3-4 3 4" })],
     lodging: [h("path", { key: "1", d: "M4 11V5" }), h("path", { key: "2", d: "M4 16h16" }), h("path", { key: "3", d: "M4 21v-8h16v8" }), h("path", { key: "4", d: "M7 13v-2h4v2" })],
     parking: [h("path", { key: "1", d: "M8 21V3h6a5 5 0 0 1 0 10H8" })],
     shopping: [h("path", { key: "1", d: "M6 8h12l-1 13H7L6 8z" }), h("path", { key: "2", d: "M9 8a3 3 0 0 1 6 0" })],
+    cart: [h("circle", { key: "1", cx: 9, cy: 20, r: 1 }), h("circle", { key: "2", cx: 17, cy: 20, r: 1 }), h("path", { key: "3", d: "M3 4h2l2 11h11l2-7H7" })],
+    school: [h("path", { key: "1", d: "M4 10 12 5l8 5-8 5-8-5z" }), h("path", { key: "2", d: "M7 13v4c2 2 8 2 10 0v-4" }), h("path", { key: "3", d: "M20 10v5" })],
+    gas: [h("path", { key: "1", d: "M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17" }), h("path", { key: "2", d: "M4 21h12" }), h("path", { key: "3", d: "M8 7h4" }), h("path", { key: "4", d: "M15 8h2l2 3v7a2 2 0 0 0 4 0v-6" })],
+    bank: [h("path", { key: "1", d: "M3 21h18" }), h("path", { key: "2", d: "M5 10h14" }), h("path", { key: "3", d: "M12 3 4 8h16l-8-5z" }), h("path", { key: "4", d: "M7 10v7" }), h("path", { key: "5", d: "M12 10v7" }), h("path", { key: "6", d: "M17 10v7" })],
+    medical: [h("path", { key: "1", d: "M12 3v18" }), h("path", { key: "2", d: "M3 12h18" }), h("rect", { key: "3", x: 5, y: 5, width: 14, height: 14, rx: 3 })],
+    pharmacy: [h("path", { key: "1", d: "M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6V4z" })],
     transit: [h("rect", { key: "1", x: 6, y: 3, width: 12, height: 15, rx: 3 }), h("path", { key: "2", d: "M8 21h8" }), h("path", { key: "3", d: "M9 7h6" }), h("path", { key: "4", d: "M9 13h.01" }), h("path", { key: "5", d: "M15 13h.01" })],
     place: [h("path", { key: "1", d: "M12 21s7-6.2 7-12A7 7 0 1 0 5 9c0 5.8 7 12 7 12z" }), h("circle", { key: "2", cx: 12, cy: 9, r: 2 })],
   };

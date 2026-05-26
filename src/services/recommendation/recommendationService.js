@@ -1,5 +1,7 @@
+import { fetchReviewMetricsForKakaoPlaces } from "../placeReviewMetricsService.js";
+
 export const DEFAULT_RECOMMENDATION_WEIGHTS = {
-  distance: 1.2,
+  distance: 0.55,
   review: 0.8,
   local: 1.4,
   preference: 1.6,
@@ -15,6 +17,8 @@ export const DEFAULT_NORMALIZATION_LIMITS = {
   minTemperature: -10,
   maxTemperature: 35,
 };
+
+export const DEFAULT_REVIEW_BLEND_BETA = 0.7;
 
 const CATEGORY_ALIASES = {
   FD6: "food",
@@ -73,7 +77,14 @@ export function calculateRecommendationScore(
   const { place: normalizedPlace, context: normalizedContext, weights: normalizedWeights } = normalizedInput;
   const components = {
     distance: calculateDistanceScore(normalizedPlace.distanceKm, normalizedInput.limits),
-    review: calculateReviewScore(normalizedPlace.rating, normalizedPlace.reviewCount, normalizedInput.limits),
+    review: calculateHybridReviewScore(
+      normalizedPlace.googleRating,
+      normalizedPlace.googleReviewCount,
+      normalizedPlace.localRating,
+      normalizedPlace.localReviewCount,
+      normalizedContext.reviewBeta,
+      normalizedInput.limits
+    ),
     local: calculateLocalScore(normalizedPlace.localReviewCount, normalizedPlace.reviewCount),
     preference: calculatePreferenceScore(normalizedContext.userPreference, normalizedPlace),
     weather: calculateWeatherScore(normalizedContext.weather, normalizedPlace.placeType),
@@ -103,13 +114,17 @@ export function calculateRecommendationScore(
 export function recommendPlaces(places, context = {}, options = {}) {
   const limit = Number.isFinite(options.limit) ? options.limit : 10;
   const weights = { ...DEFAULT_RECOMMENDATION_WEIGHTS, ...(options.weights || {}) };
+  const recommendationContext = {
+    ...context,
+    reviewBeta: options.reviewBeta ?? context.reviewBeta,
+  };
   const normalizationLimits = {
     ...DEFAULT_NORMALIZATION_LIMITS,
     ...(options.normalizationLimits || {}),
   };
 
   return sortRecommendedPlaces(
-    places.map((place) => calculateRecommendationScore(place, context, weights, normalizationLimits))
+    places.map((place) => calculateRecommendationScore(place, recommendationContext, weights, normalizationLimits))
   ).slice(0, limit);
 }
 
@@ -127,18 +142,25 @@ export function sortRecommendedPlaces(scoredPlaces) {
 // Kakao Places API 응답과 내부 장소 모델을 같은 입력 형태로 맞춥니다.
 // Kakao에는 리뷰/혼잡도 값이 없으므로 extraMetrics로 서버 리뷰 통계를 병합할 수 있습니다.
 export function normalizeKakaoPlaceForRecommendation(kakaoPlace, userLocation, extraMetrics = {}) {
-  const category = normalizeCategory(kakaoPlace.category_group_code || kakaoPlace.category_group_name);
+  const kakaoCategoryCode = kakaoPlace.categoryCode || kakaoPlace.category_group_code || kakaoPlace.category || "";
+  const kakaoCategoryName = kakaoPlace.categoryName || kakaoPlace.category_group_name || "";
+  const kakaoCategoryPath = kakaoPlace.categoryPath || kakaoPlace.category_name || "";
+  const category = normalizeCategory(kakaoCategoryCode || kakaoCategoryName);
   const lat = Number(kakaoPlace.y ?? kakaoPlace.lat);
   const lng = Number(kakaoPlace.x ?? kakaoPlace.lng);
 
   return normalizePlace(
     {
+      ...kakaoPlace,
       id: kakaoPlace.id,
       name: kakaoPlace.place_name || kakaoPlace.name,
       address: kakaoPlace.road_address_name || kakaoPlace.address_name || kakaoPlace.address,
       category,
+      categoryCode: kakaoCategoryCode,
+      categoryName: kakaoCategoryName,
+      categoryPath: kakaoCategoryPath,
       placeType: PLACE_TYPE_BY_CATEGORY[category] || "mixed",
-      tags: [kakaoPlace.category_name, kakaoPlace.category_group_name].filter(Boolean),
+      tags: [kakaoCategoryPath, kakaoCategoryName].filter(Boolean),
       lat,
       lng,
       distanceKm: kakaoPlace.distance ? Number(kakaoPlace.distance) / 1000 : undefined,
@@ -158,6 +180,14 @@ export function recommendKakaoPlaces(kakaoPlaces, context = {}, metricsByPlaceId
   return recommendPlaces(places, context, options);
 }
 
+export async function recommendKakaoPlacesWithReviewData(kakaoPlaces, context = {}, options = {}) {
+  const limit = Number.isFinite(options.limit) ? options.limit : 10;
+  const candidates = kakaoPlaces.slice(0, options.metricsLimit || Math.max(limit, 6));
+  const metricsByPlaceId = await fetchReviewMetricsForKakaoPlaces(candidates, options.metrics);
+
+  return recommendKakaoPlaces(kakaoPlaces, context, metricsByPlaceId, options);
+}
+
 export function calculateDistanceScore(distanceKm = 0, normalizationLimits = DEFAULT_NORMALIZATION_LIMITS) {
   const limits = normalizeNormalizationLimits(normalizationLimits);
   const normalizedDistance = normalizeLinear(clampMin(distanceKm, 0), 0, limits.maxDistanceKm);
@@ -170,6 +200,24 @@ export function calculateReviewScore(rating = 0, reviewCount = 0, normalizationL
   const reviewCountScore = normalizeLog(reviewCount, limits.maxReviewCount);
 
   return roundScore(ratingScore * reviewCountScore);
+}
+
+export function calculateHybridReviewScore(
+  googleRating = 0,
+  googleReviewCount = 0,
+  localRating = 0,
+  localReviewCount = 0,
+  beta = DEFAULT_REVIEW_BLEND_BETA,
+  normalizationLimits = DEFAULT_NORMALIZATION_LIMITS
+) {
+  const safeBeta = clamp(Number.isFinite(Number(beta)) ? Number(beta) : DEFAULT_REVIEW_BLEND_BETA, 0, 1);
+  const googleScore = calculateReviewScore(googleRating, googleReviewCount, normalizationLimits);
+  const localScore = calculateReviewScore(localRating, localReviewCount, normalizationLimits);
+
+  if (googleReviewCount <= 0 && localReviewCount > 0) return localScore;
+  if (localReviewCount <= 0 && googleReviewCount > 0) return googleScore;
+
+  return roundScore(safeBeta * googleScore + (1 - safeBeta) * localScore);
 }
 
 export function calculateLocalScore(localReviewCount = 0, totalReviewCount = 0) {
@@ -247,9 +295,21 @@ export function normalizePlace(place = {}, userLocation, normalizationLimits = D
         : Number(place.distance || 0) / 1000,
     0
   );
-  const rating = clamp(Number(place.rating) || 0, 0, limits.maxRating);
-  const reviewCount = clampMin(Number(place.reviewCount) || 0, 0);
-  const localReviewCount = clamp(Number(place.localReviewCount) || 0, 0, reviewCount);
+  const rawReviewCount = clampMin(Number(place.reviewCount) || 0, 0);
+  const rawLocalReviewCount = clampMin(Number(place.localReviewCount) || 0, 0);
+  const googleRating = clamp(Number(place.googleRating ?? place.rating) || 0, 0, limits.maxRating);
+  const googleReviewCount = clampMin(Number(place.googleReviewCount ?? place.reviewCount) || 0, 0);
+  const localRating = clamp(Number(place.localRating ?? (rawLocalReviewCount ? place.rating : 0)) || 0, 0, limits.maxRating);
+  const localReviewCount = clamp(rawLocalReviewCount, 0, rawReviewCount || Number.MAX_SAFE_INTEGER);
+  const reviewCount = clampMin(Number(place.reviewCount) || googleReviewCount + localReviewCount, 0);
+  const rating = clamp(
+    Number(place.rating) ||
+      weightedAverageRating(googleRating, googleReviewCount, localRating, localReviewCount) ||
+      googleRating ||
+      localRating,
+    0,
+    limits.maxRating
+  );
   const crowdLevel = clamp(Number(place.crowdLevel ?? 0.5), 0, 1);
 
   return {
@@ -264,12 +324,17 @@ export function normalizePlace(place = {}, userLocation, normalizationLimits = D
     distanceKm,
     rating,
     reviewCount,
+    googleRating,
+    googleReviewCount,
+    localRating,
     localReviewCount,
     crowdLevel,
     normalizedMetrics: {
       distance: normalizeLinear(distanceKm, 0, limits.maxDistanceKm),
       rating: normalizeLinear(rating, 0, limits.maxRating),
       reviewCount: normalizeLog(reviewCount, limits.maxReviewCount),
+      googleReview: calculateReviewScore(googleRating, googleReviewCount, limits),
+      localReview: calculateReviewScore(localRating, localReviewCount, limits),
       localReviewRatio: reviewCount === 0 ? 0 : roundScore(localReviewCount / reviewCount),
       crowdLevel,
     },
@@ -290,6 +355,11 @@ export function normalizeRecommendationContext(context = {}, normalizationLimits
       normalizedTemperature: normalizeLinear(weather.temperature, limits.minTemperature, limits.maxTemperature),
     },
     currentTime: normalizeCurrentTime(context.currentTime),
+    reviewBeta: clamp(
+      Number.isFinite(Number(context.reviewBeta)) ? Number(context.reviewBeta) : DEFAULT_REVIEW_BLEND_BETA,
+      0,
+      1
+    ),
   };
 }
 
@@ -460,6 +530,13 @@ function normalizeLog(value, max) {
 function toFiniteNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function weightedAverageRating(googleRating, googleReviewCount, localRating, localReviewCount) {
+  const total = googleReviewCount + localReviewCount;
+  if (total <= 0) return 0;
+
+  return (googleRating * googleReviewCount + localRating * localReviewCount) / total;
 }
 
 function roundScore(value) {

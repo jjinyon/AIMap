@@ -47,9 +47,10 @@ export async function fetchNearbyReviewPlaces(location) {
   );
 
   return sortNearbyPlaces(dedupePlaces(results.flat()))
-    .slice(0, 6)
+    .slice(0, 10)
     .map((place, index) => ({
       ...place,
+      kakaoPlaceId: place.id,
       id: `nearby-review-${place.id || index}`,
       ratingLabel: place.distance ? `${place.distance}m` : "주변",
       summary: makePlaceSummary(place),

@@ -924,12 +924,12 @@ button {
 
 .review-thumb.category-food {
   background: #fff1e8;
-  color: #b45309;
+  color: #c2410c;
 }
 
 .review-thumb.category-drink {
-  background: #eef2ff;
-  color: #4f46e5;
+  background: #ede9fe;
+  color: #6d28d9;
 }
 
 .review-thumb.category-cafe {
@@ -937,9 +937,18 @@ button {
   color: #8b5e34;
 }
 
-.review-thumb.category-attraction,
+.review-thumb.category-attraction {
+  background: #dcfce7;
+  color: #15803d;
+}
+
 .review-thumb.category-heritage {
-  background: #e8f7ef;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.review-thumb.category-park {
+  background: #d1fae5;
   color: #047857;
 }
 
@@ -948,12 +957,54 @@ button {
   color: #7e22ce;
 }
 
-.review-thumb.category-lodging,
-.review-thumb.category-parking,
-.review-thumb.category-convenience,
-.review-thumb.category-transit {
+.review-thumb.category-lodging {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.review-thumb.category-parking {
   background: #e0f2fe;
   color: #0369a1;
+}
+
+.review-thumb.category-convenience {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.review-thumb.category-transit {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.review-thumb.category-mart {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.review-thumb.category-school {
+  background: #ecfccb;
+  color: #4d7c0f;
+}
+
+.review-thumb.category-gas {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.review-thumb.category-bank {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.review-thumb.category-medical {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.review-thumb.category-pharmacy {
+  background: #e0f2fe;
+  color: #0284c7;
 }
 
 .review-place-copy {

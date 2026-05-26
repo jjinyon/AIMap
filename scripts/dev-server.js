@@ -6,9 +6,11 @@ const crypto = require("node:crypto");
 const root = path.resolve(__dirname, "..");
 const dataDir = path.join(root, ".data");
 const dbPath = path.join(dataDir, "auth-db.json");
+const googlePlacesCachePath = path.join(dataDir, "google-places-cache.json");
 const initialPort = Number(process.env.PORT || 5173);
 const host = process.env.HOST || "127.0.0.1";
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
+const googlePlacesCacheTtlMs = 1000 * 60 * 60 * 24 * 7;
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -29,6 +31,11 @@ const server = http.createServer(async (request, response) => {
 
   if (requestUrl.pathname.startsWith("/api/reviews")) {
     await handleReviewRequest(request, response, requestUrl);
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/google-places/")) {
+    await handleGooglePlacesRequest(request, response, requestUrl);
     return;
   }
 
@@ -164,6 +171,17 @@ async function handleAuthRequest(request, response, requestUrl) {
 
 async function handleReviewRequest(request, response, requestUrl) {
   try {
+    if (request.method === "GET" && requestUrl.pathname === "/api/reviews/stats") {
+      const db = readDb();
+      const placeIds = String(requestUrl.searchParams.get("placeIds") || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      sendJson(response, 200, { statsByPlaceId: getReviewStatsByPlaceId(db.reviews, placeIds) });
+      return;
+    }
+
     const user = getSessionUser(request);
 
     if (!user) {
@@ -220,6 +238,106 @@ async function handleReviewRequest(request, response, requestUrl) {
   }
 }
 
+async function handleGooglePlacesRequest(request, response, requestUrl) {
+  try {
+    if (request.method !== "POST" || requestUrl.pathname !== "/api/google-places/review-metrics") {
+      sendJson(response, 404, { message: "API not found." });
+      return;
+    }
+
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      sendJson(response, 200, { metricsByKakaoPlaceId: {}, message: "GOOGLE_PLACES_API_KEY is not configured." });
+      return;
+    }
+
+    const body = await readJsonBody(request);
+    const places = Array.isArray(body.places) ? body.places.slice(0, 10) : [];
+    const cache = readGooglePlacesCache();
+    const metricsByKakaoPlaceId = {};
+
+    for (const place of places) {
+      const input = normalizeGooglePlaceInput(place);
+      if (!input.placeId || !input.name) continue;
+
+      const cacheKey = makeGooglePlaceCacheKey(input);
+      const cached = getFreshCacheItem(cache.items[cacheKey]);
+
+      if (cached) {
+        metricsByKakaoPlaceId[input.placeId] = cached.metrics;
+        continue;
+      }
+
+      const metrics = await fetchGooglePlaceMetrics(input, apiKey);
+      cache.items[cacheKey] = {
+        fetchedAt: new Date().toISOString(),
+        kakaoPlaceId: input.kakaoPlaceId,
+        metrics,
+      };
+      metricsByKakaoPlaceId[input.placeId] = metrics;
+    }
+
+    writeGooglePlacesCache(cache);
+    sendJson(response, 200, { metricsByKakaoPlaceId });
+  } catch (error) {
+    sendJson(response, 500, { message: error.message || "Failed to load Google Places data." });
+  }
+}
+
+async function fetchGooglePlaceMetrics(place, apiKey) {
+  const textSearchPayload = {
+    textQuery: [place.name, place.address].filter(Boolean).join(" "),
+    maxResultCount: 1,
+    languageCode: "ko",
+    regionCode: "KR",
+  };
+
+  if (Number.isFinite(place.lat) && Number.isFinite(place.lng)) {
+    textSearchPayload.locationBias = {
+      circle: {
+        center: { latitude: place.lat, longitude: place.lng },
+        radius: 120,
+      },
+    };
+  }
+
+  const searchResponse = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount",
+    },
+    body: JSON.stringify(textSearchPayload),
+  });
+
+  const searchPayload = await searchResponse.json().catch(() => ({}));
+  if (!searchResponse.ok) {
+    throw new Error(searchPayload.error?.message || "Google Places search failed.");
+  }
+
+  const googlePlace = searchPayload.places?.[0];
+  if (!googlePlace?.id) return emptyGoogleMetrics();
+
+  const detailsResponse = await fetch(`https://places.googleapis.com/v1/places/${googlePlace.id}`, {
+    headers: {
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "id,rating,userRatingCount,reviews",
+    },
+  });
+  const detailsPayload = await detailsResponse.json().catch(() => ({}));
+  const details = detailsResponse.ok ? detailsPayload : {};
+
+  return {
+    googlePlaceId: googlePlace.id,
+    rating: Number(details.rating ?? googlePlace.rating ?? 0),
+    reviewCount: Number(details.userRatingCount ?? googlePlace.userRatingCount ?? 0),
+    reviews: normalizeGoogleReviews(details.reviews),
+    displayName: googlePlace.displayName?.text || "",
+    formattedAddress: googlePlace.formattedAddress || "",
+  };
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -266,6 +384,94 @@ function readDb() {
 function writeDb(db) {
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+}
+
+function readGooglePlacesCache() {
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  if (!fs.existsSync(googlePlacesCachePath)) {
+    return { items: {} };
+  }
+
+  try {
+    const cache = JSON.parse(fs.readFileSync(googlePlacesCachePath, "utf8"));
+    return { items: cache && typeof cache.items === "object" ? cache.items : {} };
+  } catch {
+    return { items: {} };
+  }
+}
+
+function writeGooglePlacesCache(cache) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(googlePlacesCachePath, JSON.stringify(cache, null, 2));
+}
+
+function getFreshCacheItem(item) {
+  if (!item?.fetchedAt || Date.now() - Date.parse(item.fetchedAt) > googlePlacesCacheTtlMs) return null;
+  return item;
+}
+
+function normalizeGooglePlaceInput(place = {}) {
+  return {
+    placeId: String(place.placeId || place.id || "").trim(),
+    kakaoPlaceId: String(place.kakaoPlaceId || place.placeId || place.id || "").trim(),
+    name: String(place.name || "").trim(),
+    address: String(place.address || "").trim(),
+    lat: Number(place.lat),
+    lng: Number(place.lng),
+  };
+}
+
+function makeGooglePlaceCacheKey(place) {
+  return place.kakaoPlaceId || `${place.name}:${place.address}:${place.lat},${place.lng}`;
+}
+
+function emptyGoogleMetrics() {
+  return {
+    googlePlaceId: "",
+    rating: 0,
+    reviewCount: 0,
+    reviews: [],
+    displayName: "",
+    formattedAddress: "",
+  };
+}
+
+function normalizeGoogleReviews(reviews) {
+  if (!Array.isArray(reviews)) return [];
+
+  return reviews.slice(0, 5).map((review) => ({
+    rating: Number(review.rating || 0),
+    text: review.text?.text || review.originalText?.text || "",
+    authorName: review.authorAttribution?.displayName || "",
+    relativePublishTimeDescription: review.relativePublishTimeDescription || "",
+  }));
+}
+
+function getReviewStatsByPlaceId(reviews, placeIds) {
+  const allowedPlaceIds = new Set(placeIds);
+  const grouped = {};
+
+  reviews.forEach((review) => {
+    if (allowedPlaceIds.size && !allowedPlaceIds.has(review.placeId)) return;
+
+    if (!grouped[review.placeId]) {
+      grouped[review.placeId] = { ratingTotal: 0, reviewCount: 0 };
+    }
+
+    grouped[review.placeId].ratingTotal += Number(review.rating || 0);
+    grouped[review.placeId].reviewCount += 1;
+  });
+
+  return Object.fromEntries(
+    Object.entries(grouped).map(([placeId, stats]) => [
+      placeId,
+      {
+        rating: stats.reviewCount ? Math.round((stats.ratingTotal / stats.reviewCount) * 10) / 10 : 0,
+        reviewCount: stats.reviewCount,
+      },
+    ])
+  );
 }
 
 function getSessionUser(request) {

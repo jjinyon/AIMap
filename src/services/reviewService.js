@@ -12,6 +12,25 @@ export async function createPlaceReview({ placeId, placeName, rating, content })
   });
 }
 
+export async function fetchLocalReviewStats(placeIds, options = {}) {
+  const ids = [...new Set(placeIds.filter(Boolean))];
+  if (!ids.length) return {};
+
+  const params = new URLSearchParams({ placeIds: ids.join(",") });
+  const endpoint = options.endpoint || `/api/reviews/stats?${params.toString()}`;
+  const response = await fetch(endpoint, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || "Failed to load local review stats.");
+  }
+
+  return payload.statsByPlaceId || {};
+}
+
 async function requestReview(path, options) {
   const response = await fetch(path, {
     credentials: "include",
