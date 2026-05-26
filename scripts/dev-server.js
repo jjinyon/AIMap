@@ -4,6 +4,9 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 
 const root = path.resolve(__dirname, "..");
+loadEnvFile(path.join(root, ".env"));
+loadEnvFile(path.join(root, ".env.local"));
+
 const dataDir = path.join(root, ".data");
 const dbPath = path.join(dataDir, "auth-db.json");
 const googlePlacesCachePath = path.join(dataDir, "google-places-cache.json");
@@ -90,6 +93,25 @@ server.on("error", (error) => {
 });
 
 listen(initialPort);
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+
+  const content = fs.readFileSync(filePath, "utf8");
+  content.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) return;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) return;
+
+    process.env[key] = rawValue.replace(/^['"]|['"]$/g, "");
+  });
+}
 
 async function handleAuthRequest(request, response, requestUrl) {
   try {

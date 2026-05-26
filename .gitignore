@@ -11,6 +11,10 @@ dist/
 ai-map-app/
 .data/
 
+# Local environment variables
+.env*
+!.env.example
+
 # Editor / IDE
 .idea/
 .vscode/
