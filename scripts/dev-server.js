@@ -42,6 +42,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/api/tourism/")) {
+    await handleTourismRequest(request, response, requestUrl);
+    return;
+  }
+
   const pathname = decodeURIComponent(requestUrl.pathname);
   const safePath = path
     .normalize(pathname)
@@ -304,6 +309,186 @@ async function handleGooglePlacesRequest(request, response, requestUrl) {
   } catch (error) {
     sendJson(response, 500, { message: error.message || "Failed to load Google Places data." });
   }
+}
+
+async function handleTourismRequest(request, response, requestUrl) {
+  try {
+    if (request.method !== "GET" || requestUrl.pathname !== "/api/tourism/story") {
+      sendJson(response, 404, { message: "API not found." });
+      return;
+    }
+
+    const apiKey = process.env.TOUR_API_KEY;
+    if (!apiKey) {
+      sendJson(response, 200, { story: null, message: "TOUR_API_KEY is not configured." });
+      return;
+    }
+
+    const name = String(requestUrl.searchParams.get("name") || "").trim();
+    const address = String(requestUrl.searchParams.get("address") || "").trim();
+    const lat = Number(requestUrl.searchParams.get("lat"));
+    const lng = Number(requestUrl.searchParams.get("lng"));
+    if (!name) {
+      sendJson(response, 400, { message: "name is required." });
+      return;
+    }
+
+    const story = await fetchTourismStory({ name, address, lat, lng }, apiKey);
+    sendJson(response, 200, { story });
+  } catch (error) {
+    sendJson(response, 200, { story: null, message: error.message || "Tour API lookup failed." });
+  }
+}
+
+async function fetchTourismStory(place, apiKey) {
+  const searchPayload = await requestTourApi("searchKeyword2", apiKey, {
+    keyword: place.name,
+    numOfRows: "5",
+    arrange: "A",
+  });
+  const candidates = toTourItems(searchPayload);
+  const matched = findBestTourItem(candidates, place);
+  if (!matched?.contentid) return null;
+
+  const detailPayload = await requestTourApi("detailCommon2", apiKey, {
+    contentId: matched.contentid,
+    contentTypeId: matched.contenttypeid || "",
+    defaultYN: "Y",
+    firstImageYN: "Y",
+    addrinfoYN: "Y",
+    overviewYN: "Y",
+    numOfRows: "1",
+  });
+  const detail = toTourItems(detailPayload)[0] || matched;
+  const overview = cleanTourText(detail.overview);
+  if (!overview) return null;
+
+  return {
+    source: "tour-api",
+    title: cleanTourText(detail.title || matched.title || place.name),
+    script: overview,
+    overview,
+    imageUrl: detail.firstimage || detail.firstimage2 || matched.firstimage || matched.firstimage2 || "",
+    sourceUrl: detail.homepage ? stripHtml(detail.homepage) : "https://api.visitkorea.or.kr/",
+    contentId: detail.contentid || matched.contentid,
+    contentTypeId: detail.contenttypeid || matched.contenttypeid || "",
+    raw: {
+      address: detail.addr1 || matched.addr1 || "",
+      tel: detail.tel || matched.tel || "",
+    },
+  };
+}
+
+async function requestTourApi(operation, apiKey, params = {}) {
+  const baseUrl = process.env.TOUR_API_BASE || "https://apis.data.go.kr/B551011/KorService2";
+  const url = new URL(`${baseUrl}/${operation}`);
+  const normalizedParams = {
+    MobileOS: "ETC",
+    MobileApp: "AIPlaceApp",
+    _type: "json",
+    ...params,
+  };
+
+  Object.entries(normalizedParams).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  });
+  url.searchParams.set("serviceKey", normalizeTourApiKey(apiKey));
+
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.response?.header?.resultMsg || "Tour API request failed.");
+  }
+
+  return payload;
+}
+
+function toTourItems(payload = {}) {
+  const items = payload.response?.body?.items?.item;
+  if (!items) return [];
+  return Array.isArray(items) ? items : [items];
+}
+
+function normalizeTourApiKey(apiKey = "") {
+  try {
+    return apiKey.includes("%") ? decodeURIComponent(apiKey) : apiKey;
+  } catch {
+    return apiKey;
+  }
+}
+
+function findBestTourItem(items, place) {
+  if (!items.length) return null;
+  const placeAddress = normalizeMatchText(place.address);
+  const exactName = items.find((item) => isRelevantTourItem(item, place) && normalizeMatchText(item.title) === normalizeMatchText(place.name));
+  if (exactName) return exactName;
+  const relevantItems = items.filter((item) => isRelevantTourItem(item, place));
+  if (!relevantItems.length) return null;
+
+  if (!placeAddress) return relevantItems[0];
+
+  return relevantItems.find((item) => hasAddressOverlap(item, placeAddress)) || relevantItems[0];
+}
+
+function isRelevantTourItem(item, place) {
+  const title = normalizeMatchText(item.title);
+  const placeName = normalizeMatchText(place.name);
+  const nameMatches = title && placeName && (title.includes(placeName) || placeName.includes(title));
+  const addressMatches = hasAddressOverlap(item, normalizeMatchText(place.address));
+  const distanceMatches = isNearbyTourItem(item, place);
+
+  return nameMatches || addressMatches || distanceMatches;
+}
+
+function hasAddressOverlap(item, normalizedPlaceAddress) {
+  if (!normalizedPlaceAddress) return false;
+  const itemAddress = normalizeMatchText(`${item.addr1 || ""} ${item.addr2 || ""}`);
+  if (!itemAddress) return false;
+
+  return normalizedPlaceAddress.includes(itemAddress.slice(0, 6)) || itemAddress.includes(normalizedPlaceAddress.slice(0, 6));
+}
+
+function isNearbyTourItem(item, place) {
+  const lat = Number(place.lat);
+  const lng = Number(place.lng);
+  const mapX = Number(item.mapx);
+  const mapY = Number(item.mapy);
+  if (![lat, lng, mapX, mapY].every(Number.isFinite)) return false;
+
+  return getDistanceKm({ lat, lng }, { lat: mapY, lng: mapX }) <= 2;
+}
+
+function getDistanceKm(a, b) {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(b.lat - a.lat);
+  const dLng = toRadians(b.lng - a.lng);
+  const lat1 = toRadians(a.lat);
+  const lat2 = toRadians(b.lat);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
+}
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function normalizeMatchText(value = "") {
+  return stripHtml(value).replace(/\s+/g, "").toLowerCase();
+}
+
+function cleanTourText(value = "") {
+  return stripHtml(value)
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripHtml(value = "") {
+  return String(value).replace(/<[^>]*>/g, " ").trim();
 }
 
 async function fetchGooglePlaceMetrics(place, apiKey) {

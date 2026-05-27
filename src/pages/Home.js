@@ -9,6 +9,15 @@ import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 import { buildPlaces } from "../services/mapService.js";
 import { recommendKakaoPlacesWithReviewData } from "../services/recommendation/index.js";
+import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
+import {
+  canSpeak,
+  isPaused,
+  pauseAudio,
+  resumeAudio,
+  speakStory,
+  stopAudio as stopSpeechAudio,
+} from "../services/audio/ttsService.js";
 
 const { useEffect, useRef, useState } = window.React;
 const h = window.React.createElement;
@@ -458,22 +467,22 @@ function AudioScreen({ location }) {
       setStatus("현재 위치 주변의 설화와 역사 이야기를 찾는 중입니다.");
 
       try {
-        let kakaoPlaces = [];
-
-        try {
-          kakaoPlaces = window.kakao?.maps?.services
-            ? await fetchNearbyReviewPlaces(location)
-            : [];
-        } catch {
-          kakaoPlaces = [];
-        }
+        const nearbyEpisodes = window.kakao?.maps?.services
+          ? await loadCurrentPlaceAudioStories(
+              location,
+              {
+                currentTime: new Date(),
+              },
+              { storyLimit: 5, placeLimit: 5 }
+            )
+          : [];
 
         if (ignore) return;
 
-        const nearbyEpisodes = getEpisodesNearLocation(location, kakaoPlaces);
-        setEpisodes(nearbyEpisodes);
+        const fallbackEpisodes = nearbyEpisodes.length ? nearbyEpisodes : getEpisodesNearLocation(location, []);
+        setEpisodes(fallbackEpisodes);
         setStatus(
-          nearbyEpisodes.length
+          fallbackEpisodes.length
             ? ""
             : "현재 위치 주변에서 들려줄 설화/역사 에피소드를 찾지 못했습니다."
         );
@@ -490,24 +499,19 @@ function AudioScreen({ location }) {
   }, [location.lat, location.lng]);
 
   const playEpisode = (episode) => {
-    if (!("speechSynthesis" in window)) {
+    if (!canSpeak()) {
       setStatus("이 브라우저에서는 오디오 낭독을 지원하지 않습니다.");
       return;
     }
 
-    window.speechSynthesis.cancel();
+    speakStory(episode, {
+      onEnd: () => setIsPlaying(false),
+      onError: () => {
+        setIsPlaying(false);
+        setStatus("오디오 재생 중 문제가 발생했습니다.");
+      },
+    });
 
-    const utterance = new SpeechSynthesisUtterance(`${episode.title}. ${episode.script}`);
-    utterance.lang = "ko-KR";
-    utterance.rate = 0.92;
-    utterance.pitch = 1;
-    utterance.onend = () => setIsPlaying(false);
-    utterance.onerror = () => {
-      setIsPlaying(false);
-      setStatus("오디오 재생 중 문제가 발생했습니다.");
-    };
-
-    window.speechSynthesis.speak(utterance);
     setSelectedEpisode(episode);
     setIsPlaying(true);
     setStatus("");
@@ -517,13 +521,13 @@ function AudioScreen({ location }) {
     if (!selectedEpisode) return;
 
     if (isPlaying) {
-      window.speechSynthesis.pause();
+      pauseAudio();
       setIsPlaying(false);
       return;
     }
 
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
+    if (isPaused()) {
+      resumeAudio();
       setIsPlaying(true);
       return;
     }
@@ -634,9 +638,7 @@ function AudioScreen({ location }) {
 }
 
 function stopAudio() {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-  }
+  stopSpeechAudio();
 }
 
 function AudioMiniIcon() {
