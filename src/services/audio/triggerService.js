@@ -24,28 +24,35 @@ export async function loadCurrentPlaceAudioStories(location, context = {}, optio
   return getAudioStoriesForPlaces(storyPlaces, { ...context, location }, { limit: options.storyLimit || 5 });
 }
 
-function makeCurrentLocationPlace(location) {
-  const knownArea = findKnownArea(location);
-  if (knownArea) return knownArea;
-
-  return {
-    id: `current-${location.lat}-${location.lng}`,
-    name: location.label || "현재 위치",
-    address: location.address || "",
-    categoryName: "현재 장소",
-    type: "현재 장소",
-    lat: location.lat,
-    lng: location.lng,
-  };
-}
-
 function buildStoryPlaces(location, places = []) {
   const knownArea = findKnownArea(location);
   const localPlaces = places
     .filter(isStoryWorthyPlace)
     .sort((a, b) => Number(a.distance || 0) - Number(b.distance || 0));
+  const nearestPlace = places
+    .filter((place) => place?.name)
+    .sort((a, b) => Number(a.distance || 0) - Number(b.distance || 0))[0];
 
-  return [knownArea, ...localPlaces, makeCurrentLocationPlace(location)].filter(Boolean);
+  return dedupePlaces([knownArea, ...localPlaces, nearestPlace, makeCurrentLocationPlace(location)].filter(Boolean));
+}
+
+function makeCurrentLocationPlace(location) {
+  const knownArea = findKnownArea(location);
+  if (knownArea) return knownArea;
+
+  const label = String(location.label || "").trim();
+  const address = String(location.address || "").trim();
+  const name = label && !isGenericLocationLabel(label) ? label : makeAreaTitle(address);
+
+  return {
+    id: `current-${location.lat}-${location.lng}`,
+    name,
+    address,
+    categoryName: "지역 이야기",
+    type: "지역 이야기",
+    lat: location.lat,
+    lng: location.lng,
+  };
 }
 
 function isStoryWorthyPlace(place = {}) {
@@ -75,7 +82,34 @@ function findKnownArea(location = {}) {
     distance: Math.round(getDistanceKm({ lat, lng }, { lat: 37.2414, lng: 127.0811 }) * 1000),
   };
 
-  return kyungHeeInternationalCampus.distance <= 1800 ? kyungHeeInternationalCampus : null;
+  return kyungHeeInternationalCampus.distance <= 3000 ? kyungHeeInternationalCampus : null;
+}
+
+function dedupePlaces(places = []) {
+  const seen = new Set();
+
+  return places.filter((place) => {
+    const key = place.id || `${place.name}-${place.address}`;
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function isGenericLocationLabel(label = "") {
+  return /^(현재\s*)?위치$|current location/i.test(label);
+}
+
+function makeAreaTitle(address = "") {
+  const tokens = String(address)
+    .split(/\s+/)
+    .filter(Boolean);
+  const neighborhood = [...tokens].reverse().find((token) => /동$|읍$|면$|가$|로$|길$/.test(token));
+  const district = [...tokens].reverse().find((token) => /구$|시$|군$/.test(token));
+  const area = neighborhood || district;
+
+  return area ? `${area} 주변 이야기` : "내 주변 이야기";
 }
 
 function getDistanceKm(a, b) {

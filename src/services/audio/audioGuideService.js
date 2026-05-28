@@ -27,7 +27,7 @@ export async function getAudioStoriesForPlaces(places = [], context = {}, option
 }
 
 export function toAudioEpisode(place = {}, story = {}, index = 0) {
-  const title = story.title || place.name || "현재 장소 이야기";
+  const title = normalizeEpisodeTitle(story.title || place.name);
   const distanceKm = place.distance ? Math.max(0.1, Math.round((Number(place.distance) / 1000) * 10) / 10) : 0.1;
 
   return {
@@ -46,9 +46,19 @@ export function toAudioEpisode(place = {}, story = {}, index = 0) {
   };
 }
 
+function normalizeEpisodeTitle(title = "") {
+  const trimmedTitle = String(title).trim();
+  if (!trimmedTitle || /^(현재\s*)?위치$/.test(trimmedTitle)) return "내 주변 이야기";
+
+  return trimmedTitle;
+}
+
 function makeShortTitle(title = "") {
-  const words = String(title).trim().split(/\s+/);
-  if (words.length <= 1) return title || "장소 이야기";
+  const normalizedTitle = normalizeEpisodeTitle(title);
+  const words = normalizedTitle.split(/\s+/);
+  if (words.length <= 1) return normalizedTitle;
+  if (words.length === 2 && /이야기$/.test(words[1])) return normalizedTitle;
+
   return words.slice(0, 2).join("\n");
 }
 

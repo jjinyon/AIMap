@@ -1,7 +1,7 @@
 import { summarizeReviews } from "./reviewSummaryService.js";
 
 export async function generateAIStory(place = {}, context = {}) {
-  const name = place.name || place.place_name || "지금 이 장소";
+  const name = normalizePlaceName(place);
   const category = place.categoryName || place.type || place.category || "장소";
   const timeLabel = getTimeLabel(context.currentTime || new Date());
   const weatherLabel = getWeatherLabel(context.weather);
@@ -22,6 +22,13 @@ export async function generateAIStory(place = {}, context = {}) {
       "지금 보이는 풍경을 천천히 따라가 보세요. 익숙한 길도 한 편의 짧은 여행처럼 느껴질 수 있습니다.",
     ].join(" "),
   };
+}
+
+function normalizePlaceName(place = {}) {
+  const name = String(place.name || place.place_name || "").trim();
+  if (!name || /^(현재\s*)?위치$/.test(name)) return "내 주변";
+
+  return name;
 }
 
 function getTimeLabel(currentTime) {
