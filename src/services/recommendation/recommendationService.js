@@ -111,7 +111,17 @@ export function calculateRecommendationScore(
 
 // 장소 리스트를 점수순으로 정렬하고 기본 상위 10개를 반환합니다.
 // 원본 배열을 변경하지 않아 React state나 캐시 데이터와 충돌하지 않습니다.
+function isParkingPlace(place = {}) {
+  const category = normalizeCategory(place.category || place.categoryCode || place.type);
+  const categoryPath = String(
+    [place.categoryPath, place.categoryName, place.type, ...(place.tags || [])].filter(Boolean).join(" ")
+  );
+
+  return category === "parking" || /주차|parking/.test(categoryPath);
+}
+
 export function recommendPlaces(places, context = {}, options = {}) {
+  const filteredPlaces = places.filter((place) => !isParkingPlace(place));
   const limit = Number.isFinite(options.limit) ? options.limit : 10;
   const weights = { ...DEFAULT_RECOMMENDATION_WEIGHTS, ...(options.weights || {}) };
   const recommendationContext = {
@@ -124,7 +134,7 @@ export function recommendPlaces(places, context = {}, options = {}) {
   };
 
   return sortRecommendedPlaces(
-    places.map((place) => calculateRecommendationScore(place, recommendationContext, weights, normalizationLimits))
+    filteredPlaces.map((place) => calculateRecommendationScore(place, recommendationContext, weights, normalizationLimits))
   ).slice(0, limit);
 }
 
