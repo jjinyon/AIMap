@@ -1659,6 +1659,18 @@ function Icon({ name }) {
     "aria-hidden": "true",
   };
 
+  const imageIcons = {
+    headphones: "/icons/audio.svg",
+    foldedMap: "/icons/map.svg",
+    message: "/icons/review.svg",
+    settings: "/icons/settings.svg",
+    profile: "/icons/profile.svg",
+  };
+
+  if (imageIcons[name]) {
+    return h("img", { className: "icon-image", src: imageIcons[name], alt: "" });
+  }
+
   const icons = {
     headphones: [
       h("path", { key: "1", d: "M4 14v3a4 4 0 0 0 4 4" }),

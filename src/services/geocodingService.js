@@ -35,7 +35,7 @@ export async function searchPlaces(query, location) {
   });
 }
 
-const nearbyCategoryCodes = ["FD6", "CE7", "AT4", "CT1", "PK6"];
+const nearbyCategoryCodes = ["FD6", "CE7", "AT4", "CT1"];
 
 export async function fetchNearbyReviewPlaces(location) {
   if (!location?.lat || !location?.lng) return [];

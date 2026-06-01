@@ -315,6 +315,13 @@ button {
   height: 19px;
 }
 
+.icon-image {
+  width: 24px;
+  height: 24px;
+  display: block;
+  object-fit: contain;
+}
+
 .search-results {
   position: absolute;
   top: 113px;
@@ -1378,9 +1385,7 @@ button {
   margin: 8px 0 8px;
   border: 6px solid #ffffff;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 49% 47%, #f8e4c4 0 17%, #c58b55 18% 23%, transparent 24%),
-    radial-gradient(circle at 52% 48%, transparent 0 31%, #7b4a2d 32% 48%, #f4eee4 49% 55%, #5d3a27 56% 100%);
+  background: #ffffff url('/icons/profile.svg') center/70% no-repeat;
   box-shadow: 0 8px 22px rgba(59, 39, 23, 0.18);
 }
 
@@ -1582,11 +1587,16 @@ button {
 }
 
 .bottom-nav button.active {
-  background: #ffe4a3;
-  color: var(--accent);
+  background: #ffb93d;
+  color: #ffffff;
 }
 
-.bottom-nav svg {
+.bottom-nav button.active .icon-image {
+  filter: brightness(0) invert(1);
+}
+
+.bottom-nav svg,
+.bottom-nav .icon-image {
   width: 23px;
   height: 23px;
 }
