@@ -7,7 +7,7 @@ export async function searchPlaces(query, location) {
   return new Promise((resolve, reject) => {
     const places = new kakao.maps.services.Places();
     const options = {
-      size: 5,
+      size: 15,
       sort: kakao.maps.services.SortBy.ACCURACY,
     };
 

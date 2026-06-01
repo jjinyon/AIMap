@@ -7,9 +7,9 @@ import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
-import { buildPlaces } from "../services/mapService.js";
 import { recommendKakaoPlacesWithReviewData } from "../services/recommendation/index.js";
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
+import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
 import {
   canSpeak,
   isPaused,
@@ -278,12 +278,16 @@ function MapScreen({ location, appStatus }) {
   const [routePath, setRoutePath] = useState([]);
   const [routeStatus, setRouteStatus] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [activeRouteOption, setActiveRouteOption] = useState("");
   const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(true);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
   const [recommendedPlaces, setRecommendedPlaces] = useState([]);
+  const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces());
   const hasDestination = Boolean(selectedSearchResult);
+  const savedPlaceIds = new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id));
+  const isDestinationSaved = selectedSearchResult ? isPlaceSaved(selectedSearchResult, savedPlaces) : false;
   const recommendedMapPlaces = showRecommendedPlaces
     ? recommendedPlaces.map((place) => ({
         ...place,
@@ -292,9 +296,8 @@ function MapScreen({ location, appStatus }) {
       }))
     : [];
   const savedMapPlaces = showSavedPlaces
-    ? buildPlaces(location, "culture", "quiet").map((place) => ({
+    ? savedPlaces.map((place) => ({
         ...place,
-        id: `saved-${place.id}`,
         markerKind: "saved",
         reason: "저장한 장소입니다.",
       }))
@@ -330,6 +333,21 @@ function MapScreen({ location, appStatus }) {
     setRoutePath([]);
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
+    setSaveStatus("");
+  };
+
+  const toggleSaved = (place) => {
+    const wasSaved = isPlaceSaved(place, savedPlaces);
+    const nextPlaces = toggleSavedPlace(place, savedPlaces);
+    setSavedPlaces(nextPlaces);
+    setShowSavedPlaces(true);
+    const message = wasSaved ? "저장한 장소에서 삭제했습니다." : "나만의 장소로 저장했습니다.";
+    if (selectedSearchResult?.id === place.id) {
+      setRouteStatus(message);
+      return;
+    }
+
+    setSaveStatus(message);
   };
 
   const findFastRoute = async () => {
@@ -366,17 +384,15 @@ function MapScreen({ location, appStatus }) {
     try {
       const results = await searchPlaces(trimmedQuery, location);
       setSearchResults(results);
-      setSearchStatus(results.length ? `${results.length}개의 목적지를 찾았습니다.` : "검색 결과가 없습니다.");
-      if (results[0]) {
-        selectDestination(results[0]);
-      } else {
-        setSelectedSearchResult(null);
-        setRoutePath([]);
-        setRouteStatus("");
-        setActiveRouteOption("");
-      }
+      setSearchStatus(results.length ? `${results.length}개의 장소를 찾았습니다. 장소를 선택하거나 하트로 저장하세요.` : "검색 결과가 없습니다.");
+      setSaveStatus("");
+      setSelectedSearchResult(null);
+      setRoutePath([]);
+      setRouteStatus("");
+      setActiveRouteOption("");
     } catch {
       setSearchStatus("검색에 실패했습니다. 잠시 후 다시 시도하세요.");
+      setSaveStatus("");
       setRouteStatus("");
       setSearchResults([]);
       setSelectedSearchResult(null);
@@ -429,11 +445,20 @@ function MapScreen({ location, appStatus }) {
             onToggleRecommended: () => setShowRecommendedPlaces((value) => !value),
             onToggleSaved: () => setShowSavedPlaces((value) => !value),
           }),
+      hasDestination
+        ? h(DestinationSummary, {
+            place: selectedSearchResult,
+            isSaved: isDestinationSaved,
+            onToggleSave: () => toggleSaved(selectedSearchResult),
+          })
+        : null,
       h(SearchResults, {
         results: hasDestination ? [] : searchResults,
-        status: hasDestination ? routeStatus : searchStatus,
+        status: hasDestination ? routeStatus : saveStatus || searchStatus,
         selectedId: selectedSearchResult?.id,
+        savedPlaceIds,
         onSelect: selectDestination,
+        onToggleSave: toggleSaved,
       }),
       h(MapActions)
     ),
@@ -1434,7 +1459,7 @@ function SearchBar({ value, isSearching, onChange, onSubmit }) {
   );
 }
 
-function SearchResults({ results, status, selectedId, onSelect }) {
+function SearchResults({ results, status, selectedId, savedPlaceIds, onSelect, onToggleSave }) {
   if (!status && results.length === 0) return null;
 
   return h(
@@ -1443,17 +1468,57 @@ function SearchResults({ results, status, selectedId, onSelect }) {
     status ? h("p", { className: "search-status" }, status) : null,
     results.map((result) =>
       h(
-        "button",
+        "div",
         {
           key: result.id,
-          className: result.id === selectedId ? "search-result active" : "search-result",
-          type: "button",
-          onClick: () => onSelect(result),
+          className: result.id === selectedId ? "search-result-row active" : "search-result-row",
         },
-        h("strong", null, result.name),
-        h("span", null, result.address || "주소 정보 없음")
+        h(
+          "button",
+          {
+            className: "search-result",
+            type: "button",
+            onClick: () => onSelect(result),
+          },
+          h("strong", null, result.name),
+          h("span", null, result.address || "주소 정보 없음")
+        ),
+        onToggleSave
+          ? h(
+              "button",
+              {
+                className: savedPlaceIds?.has(result.kakaoPlaceId || result.id)
+                  ? "search-save-button active"
+                  : "search-save-button",
+                type: "button",
+                "aria-label": `${result.name} 저장`,
+                "aria-pressed": savedPlaceIds?.has(result.kakaoPlaceId || result.id) || false,
+                onClick: () => onToggleSave(result),
+              },
+              h(Icon, { name: "heart" })
+            )
+          : null
       )
     )
+  );
+}
+
+function DestinationSummary({ place, isSaved, onToggleSave }) {
+  return h(
+    "section",
+    { className: "destination-summary", "aria-label": "선택한 장소" },
+    h(
+      "button",
+      {
+        className: isSaved ? "destination-save-button active" : "destination-save-button",
+        type: "button",
+        "aria-label": `${place.name} 저장`,
+        "aria-pressed": isSaved,
+        onClick: onToggleSave,
+      },
+      h(Icon, { name: "heart" })
+    ),
+    h("div", null, h("strong", null, place.name), h("span", null, place.address || place.type || "장소 정보 없음"))
   );
 }
 

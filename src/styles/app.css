@@ -339,7 +339,47 @@ button {
 }
 
 .route-search-mode .search-results {
+  top: 214px;
+}
+
+.destination-summary {
+  position: absolute;
   top: 154px;
+  left: 11px;
+  right: 11px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid rgba(211, 202, 188, 0.92);
+  border-radius: 13px;
+  background: rgba(255, 253, 247, 0.98);
+  box-shadow: 0 9px 20px rgba(48, 43, 35, 0.16);
+  pointer-events: auto;
+}
+
+.destination-summary strong,
+.destination-summary span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.destination-summary strong {
+  color: #171717;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.destination-summary span {
+  margin-top: 2px;
+  color: #767970;
+  font-size: 0.59rem;
+  font-weight: 700;
 }
 
 .search-status {
@@ -350,20 +390,32 @@ button {
   font-weight: 800;
 }
 
-.search-result {
+.search-result-row {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 4px;
+  align-items: center;
   width: 100%;
   min-height: 43px;
-  padding: 7px 10px;
+  padding: 0 7px 0 10px;
   border-top: 1px solid #eee7dd;
   background: transparent;
   color: #202020;
-  text-align: left;
 }
 
-.search-result.active {
+.search-result-row.active {
   background: #fff0cf;
+}
+
+.search-result {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 43px;
+  padding: 7px 0;
+  background: transparent;
+  color: #202020;
+  text-align: left;
 }
 
 .search-result strong {
@@ -373,6 +425,35 @@ button {
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.search-save-button,
+.destination-save-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 102, 184, 0.38);
+  border-radius: 7px;
+  background: #fff;
+  color: #ff66b8;
+}
+
+.destination-save-button {
+  width: 34px;
+  height: 34px;
+}
+
+.search-save-button.active,
+.destination-save-button.active {
+  background: #ff66b8;
+  color: #fff;
+}
+
+.search-save-button svg,
+.destination-save-button svg {
+  width: 17px;
+  height: 17px;
 }
 
 .search-result span {
@@ -1647,7 +1728,13 @@ button {
   }
 
   .route-search-mode .search-results {
+    top: calc(max(14px, env(safe-area-inset-top)) + 205px);
+  }
+
+  .destination-summary {
     top: calc(max(14px, env(safe-area-inset-top)) + 145px);
+    left: 14px;
+    right: 14px;
   }
 
   .route-option-strip {
