@@ -74,7 +74,7 @@ export function MapView({
 
       kakao.maps.event.addListener(marker, "click", () => {
         openInfoWindow(infoWindow, marker);
-        onSelectPlace(place.id, true);
+        onSelectPlace?.(place);
       });
 
       return marker;

@@ -275,6 +275,8 @@ function MapScreen({ location, appStatus }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState(null);
+  const [destinationRecommendedPlaces, setDestinationRecommendedPlaces] = useState([]);
+  const [destinationRecommendationStatus, setDestinationRecommendationStatus] = useState("");
   const [routePath, setRoutePath] = useState([]);
   const [routeStatus, setRouteStatus] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
@@ -288,6 +290,11 @@ function MapScreen({ location, appStatus }) {
   const hasDestination = Boolean(selectedSearchResult);
   const savedPlaceIds = new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id));
   const isDestinationSaved = selectedSearchResult ? isPlaceSaved(selectedSearchResult, savedPlaces) : false;
+  const destinationRecommendedMapPlaces = destinationRecommendedPlaces.map((place) => ({
+    ...place,
+    markerKind: "recommended",
+    reason: place.aiReason || place.summary || place.address || "",
+  }));
   const recommendedMapPlaces = showRecommendedPlaces
     ? recommendedPlaces.map((place) => ({
         ...place,
@@ -302,7 +309,9 @@ function MapScreen({ location, appStatus }) {
         reason: "저장한 장소입니다.",
       }))
     : [];
-  const visibleMapPlaces = hasDestination ? [] : [...recommendedMapPlaces, ...savedMapPlaces];
+  const visibleMapPlaces = hasDestination
+    ? destinationRecommendedMapPlaces
+    : [...recommendedMapPlaces, ...savedMapPlaces];
 
   useEffect(() => {
     let ignore = false;
@@ -327,6 +336,56 @@ function MapScreen({ location, appStatus }) {
       ignore = true;
     };
   }, [location.lat, location.lng]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadDestinationRecommendedPlaces() {
+      if (!selectedSearchResult?.lat || !selectedSearchResult?.lng) {
+        setDestinationRecommendedPlaces([]);
+        setDestinationRecommendationStatus("");
+        return;
+      }
+
+      setDestinationRecommendedPlaces([]);
+      setDestinationRecommendationStatus(`${selectedSearchResult.name} 주변 추천 장소를 찾는 중입니다.`);
+
+      try {
+        const places = await fetchNearbyReviewPlaces(selectedSearchResult);
+        const selectedKey = String(selectedSearchResult.kakaoPlaceId || selectedSearchResult.id || "");
+        const nearbyPlaces = places.filter((place) => {
+          const key = String(place.kakaoPlaceId || place.id || "");
+          return key && key !== selectedKey;
+        });
+        const recommended = await recommendKakaoPlacesWithReviewData(
+          nearbyPlaces,
+          { userLocation: selectedSearchResult },
+          { limit: 8, metricsLimit: 8 }
+        );
+
+        if (ignore) return;
+
+        const formattedPlaces = recommended.map(formatRecommendedPlace);
+        setDestinationRecommendedPlaces(formattedPlaces);
+        setDestinationRecommendationStatus(
+          formattedPlaces.length
+            ? `${selectedSearchResult.name} 주변 추천 장소 ${formattedPlaces.length}곳입니다.`
+            : `${selectedSearchResult.name} 주변에서 추천할 장소를 찾지 못했습니다.`
+        );
+      } catch {
+        if (!ignore) {
+          setDestinationRecommendedPlaces([]);
+          setDestinationRecommendationStatus("검색한 장소 주변 추천을 불러오지 못했습니다.");
+        }
+      }
+    }
+
+    loadDestinationRecommendedPlaces();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedSearchResult?.id, selectedSearchResult?.lat, selectedSearchResult?.lng]);
 
   const selectDestination = (destination) => {
     setSelectedSearchResult(destination);
@@ -410,7 +469,7 @@ function MapScreen({ location, appStatus }) {
       location,
       places: visibleMapPlaces,
       selectedPlace: null,
-      onSelectPlace: () => {},
+      onSelectPlace: selectDestination,
       searchResults,
       selectedSearchResult,
       onSelectSearchResult: selectDestination,
@@ -446,20 +505,23 @@ function MapScreen({ location, appStatus }) {
             onToggleSaved: () => setShowSavedPlaces((value) => !value),
           }),
       hasDestination
-        ? h(DestinationSummary, {
+        ? h(PlaceBottomSheet, {
             place: selectedSearchResult,
+            recommendedPlaces: destinationRecommendedPlaces,
+            status: routePath.length ? routeStatus : destinationRecommendationStatus || routeStatus,
+            savedPlaceIds,
             isSaved: isDestinationSaved,
-            onToggleSave: () => toggleSaved(selectedSearchResult),
+            onToggleSave: toggleSaved,
+            onSelectPlace: selectDestination,
           })
-        : null,
-      h(SearchResults, {
-        results: hasDestination ? [] : searchResults,
-        status: hasDestination ? routeStatus : saveStatus || searchStatus,
-        selectedId: selectedSearchResult?.id,
-        savedPlaceIds,
-        onSelect: selectDestination,
-        onToggleSave: toggleSaved,
-      }),
+        : h(SearchResults, {
+            results: searchResults,
+            status: saveStatus || searchStatus,
+            selectedId: selectedSearchResult?.id,
+            savedPlaceIds,
+            onSelect: selectDestination,
+            onToggleSave: toggleSaved,
+          }),
       h(MapActions)
     ),
     appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
@@ -1503,23 +1565,98 @@ function SearchResults({ results, status, selectedId, savedPlaceIds, onSelect, o
   );
 }
 
-function DestinationSummary({ place, isSaved, onToggleSave }) {
+function PlaceBottomSheet({ place, recommendedPlaces, status, savedPlaceIds, isSaved, onToggleSave, onSelectPlace }) {
+  const detailItems = [
+    ["카테고리", place.categoryPath || place.categoryName || place.type],
+    ["주소", place.address],
+    ["전화", place.phone],
+    ["거리", place.distance ? `${place.distance}m` : ""],
+  ].filter(([, value]) => value);
+
   return h(
     "section",
-    { className: "destination-summary", "aria-label": "선택한 장소" },
+    { className: "place-bottom-sheet", "aria-label": `${place.name} 장소 정보` },
+    h("div", { className: "place-sheet-handle", "aria-hidden": "true" }),
     h(
-      "button",
-      {
-        className: isSaved ? "destination-save-button active" : "destination-save-button",
-        type: "button",
-        "aria-label": `${place.name} 저장`,
-        "aria-pressed": isSaved,
-        onClick: onToggleSave,
-      },
-      h(Icon, { name: "heart" })
+      "div",
+      { className: "place-sheet-scroll" },
+      h(
+        "header",
+        { className: "place-sheet-header" },
+        h(
+          "div",
+          { className: "place-sheet-title" },
+          h("strong", null, place.name),
+          h("span", null, place.categoryName || place.type || "카카오 장소")
+        ),
+        h(
+          "button",
+          {
+            className: isSaved ? "destination-save-button active" : "destination-save-button",
+            type: "button",
+            "aria-label": `${place.name} 저장`,
+            "aria-pressed": isSaved,
+            onClick: () => onToggleSave(place),
+          },
+          h(Icon, { name: "heart" })
+        )
+      ),
+      place.address ? h("p", { className: "place-sheet-address" }, place.address) : null,
+      h(
+        "div",
+        { className: "place-sheet-actions" },
+        place.url
+          ? h(
+              "a",
+              {
+                className: "place-sheet-link",
+                href: place.url,
+                target: "_blank",
+                rel: "noreferrer",
+              },
+              "카카오맵에서 보기"
+            )
+          : null,
+        place.phone ? h("a", { className: "place-sheet-link secondary", href: `tel:${place.phone}` }, "전화") : null
+      ),
+      detailItems.length
+        ? h(
+            "dl",
+            { className: "place-detail-list" },
+            detailItems.flatMap(([label, value]) => [
+              h("dt", { key: `${label}-label` }, label),
+              h("dd", { key: `${label}-value` }, value),
+            ])
+          )
+        : null,
+      h("p", { className: "place-description" }, makeKakaoPlaceDescription(place)),
+      h(
+        "section",
+        { className: "place-nearby-section", "aria-label": `${place.name} 주변 추천 장소` },
+        h("h2", null, "주변 추천"),
+        status ? h("p", { className: "search-status" }, status) : null,
+        recommendedPlaces.length
+          ? h(SearchResults, {
+              results: recommendedPlaces,
+              status: "",
+              selectedId: place.id,
+              savedPlaceIds,
+              onSelect: onSelectPlace,
+              onToggleSave,
+            })
+          : null
+      )
     ),
-    h("div", null, h("strong", null, place.name), h("span", null, place.address || place.type || "장소 정보 없음"))
   );
+}
+
+function makeKakaoPlaceDescription(place = {}) {
+  const category = place.categoryPath || place.categoryName || place.type || "장소";
+  const address = place.address ? `${place.address}에 있는 ` : "";
+  const phone = place.phone ? ` 문의 전화는 ${place.phone}입니다.` : "";
+  const distance = place.distance ? ` 기준 지점에서 약 ${place.distance}m 떨어져 있습니다.` : "";
+
+  return `카카오 장소 검색 API에서 확인한 ${address}${category}입니다.${distance}${phone}`;
 }
 
 function RouteOptionStrip({ activeId, onSelect }) {
