@@ -26,15 +26,20 @@ const CATEGORY_ALIASES = {
   CT1: "culture",
   AT4: "culture",
   PK6: "park",
+  MT1: "shopping",
   fd6: "food",
   ce7: "cafe",
   ct1: "culture",
   at4: "culture",
   pk6: "park",
+  mt1: "shopping",
   food: "food",
   cafe: "cafe",
   culture: "culture",
   park: "park",
+  shopping: "shopping",
+  photo: "photo_spot",
+  photo_spot: "photo_spot",
   convenience: "convenience",
 };
 
@@ -44,6 +49,33 @@ const PLACE_TYPE_BY_CATEGORY = {
   culture: "indoor",
   convenience: "indoor",
   park: "outdoor",
+  shopping: "indoor",
+  photo_spot: "outdoor",
+};
+
+const MOOD_KEYWORDS = {
+  quiet: ["조용", "한적", "도서관", "서점", "카페", "공원", "산책", "quiet"],
+  lively: ["활기", "시장", "번화", "축제", "광장", "맛집", "shopping", "food"],
+  nature: ["자연", "공원", "숲", "호수", "정원", "산", "둘레길", "park"],
+  history: ["역사", "문화재", "궁", "성", "박물관", "전통", "heritage", "culture"],
+  trendy: ["트렌디", "핫플", "카페", "편집샵", "쇼핑", "사진", "cafe", "shopping"],
+  value: ["가성비", "시장", "분식", "맛집", "푸드", "food"],
+};
+
+const COMPANION_KEYWORDS = {
+  solo: ["혼자", "조용", "산책", "카페", "도서관", "solo"],
+  friend: ["친구", "맛집", "카페", "쇼핑", "사진", "활기", "food", "cafe", "shopping"],
+  couple: ["연인", "데이트", "전망", "사진", "카페", "공원", "trendy"],
+  family: ["가족", "공원", "문화", "박물관", "전시", "체험", "park", "culture"],
+};
+
+const AUDIO_INTEREST_KEYWORDS = {
+  history: ["역사", "문화재", "전통", "heritage"],
+  culture: ["문화", "전시", "미술관", "박물관", "공연", "culture"],
+  food: ["맛집", "음식", "식당", "카페", "food", "cafe"],
+  legend: ["전설", "설화", "이야기", "마을", "지역"],
+  architecture: ["건축", "건물", "궁", "성당", "캠퍼스", "architecture"],
+  campus: ["대학", "대학교", "캠퍼스", "대학가", "campus"],
 };
 
 const WEATHER_RULES = {
@@ -239,19 +271,40 @@ export function calculateLocalScore(localReviewCount = 0, totalReviewCount = 0) 
 
 export function calculatePreferenceScore(userPreference = {}, place) {
   const preferredCategories = new Set(toArray(userPreference.categories).map(normalizeCategory));
-  const preferredTags = new Set(toArray(userPreference.tags).map(normalizeToken));
   const placeCategory = normalizeCategory(place.category);
-  const placeTags = toArray(place.tags).map(normalizeToken);
+  const categoryScore = preferredCategories.size > 0 && preferredCategories.has(placeCategory) ? 1 : 0;
+  const moodScore = calculateKeywordPreferenceMatch(userPreference.moods, place, MOOD_KEYWORDS);
+  const companionScore = calculateCompanionMatch(userPreference.companion, place);
+  const audioInterestScore = calculateKeywordPreferenceMatch(
+    userPreference.audioInterests,
+    place,
+    AUDIO_INTEREST_KEYWORDS
+  );
 
-  let score = 0;
-  if (preferredCategories.has(placeCategory)) score += 0.65;
-
-  const matchedTags = placeTags.filter((tag) => preferredTags.has(tag)).length;
-  if (preferredTags.size > 0) {
-    score += Math.min(0.35, (matchedTags / preferredTags.size) * 0.35);
-  }
+  const score = 0.4 * categoryScore + 0.3 * moodScore + 0.2 * companionScore + 0.1 * audioInterestScore;
 
   return roundScore(clamp(score, 0, 1));
+}
+
+function calculateKeywordPreferenceMatch(preferences = [], place, keywordMap) {
+  const selected = toArray(preferences).map(normalizeToken).filter(Boolean);
+  if (!selected.length) return 0;
+
+  const placeText = getSearchablePlaceText(place);
+  const matched = selected.filter((preference) =>
+    toArray(keywordMap[preference]).some((keyword) => placeText.includes(normalizeToken(keyword)))
+  ).length;
+
+  return roundScore(clamp(matched / selected.length, 0, 1));
+}
+
+function calculateCompanionMatch(companion, place) {
+  const normalizedCompanion = normalizeToken(companion);
+  if (!normalizedCompanion) return 0;
+
+  const placeText = getSearchablePlaceText(place);
+  const keywords = toArray(COMPANION_KEYWORDS[normalizedCompanion]);
+  return keywords.some((keyword) => placeText.includes(normalizeToken(keyword))) ? 1 : 0;
 }
 
 export function calculateWeatherScore(weather = {}, placeType = "mixed") {
@@ -494,6 +547,9 @@ function normalizeUserPreference(userPreference = {}) {
   return {
     ...userPreference,
     categories: toArray(userPreference.categories).map(normalizeCategory).filter(Boolean),
+    moods: toArray(userPreference.moods).map(normalizeToken).filter(Boolean),
+    companion: normalizeToken(userPreference.companion),
+    audioInterests: toArray(userPreference.audioInterests).map(normalizeToken).filter(Boolean),
     tags: toArray(userPreference.tags).map(normalizeToken).filter(Boolean),
   };
 }
@@ -511,6 +567,23 @@ function normalizeCategory(value = "") {
 
 function normalizeToken(value = "") {
   return String(value).trim().toLowerCase();
+}
+
+function getSearchablePlaceText(place = {}) {
+  return [
+    place.name,
+    place.category,
+    place.categoryCode,
+    place.categoryName,
+    place.categoryPath,
+    place.type,
+    place.address,
+    place.summary,
+    place.description,
+    ...(place.tags || []),
+  ]
+    .map(normalizeToken)
+    .join(" ");
 }
 
 function toArray(value) {

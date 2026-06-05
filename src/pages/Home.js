@@ -1,8 +1,9 @@
 import { MapView } from "../components/MapView.js";
+import { SignupPage } from "./SignupPage.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 import { audioGenreFilters } from "../data/audioEpisodeData.js";
 import { reviewMockData } from "../data/reviewMockData.js";
-import { getCurrentUser, loginUser, logoutUser, signupUser } from "../services/authService.js";
+import { getCurrentUser, loginUser, logoutUser } from "../services/authService.js";
 import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
@@ -80,7 +81,7 @@ export function Home({ appStatus }) {
         if (ignore) return;
 
         setAuthUser(user);
-        setScreen("review");
+        setScreen("map");
         setPreviousScreen(null);
       } catch {
         if (ignore) return;
@@ -101,7 +102,7 @@ export function Home({ appStatus }) {
 
   const completeAuth = (user) => {
     setAuthUser(user);
-    setScreen("review");
+    setScreen("map");
     setPreviousScreen(null);
   };
 
@@ -214,7 +215,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
   }
 
   if (screen === "audio") {
-    return h(AudioScreen, { location });
+    return h(AudioScreen, { location, user: authUser });
   }
 
   if (screen === "settings") {
@@ -237,7 +238,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
     });
   }
 
-  return h(MapScreen, { location, appStatus });
+  return h(MapScreen, { location, appStatus, user: authUser });
 }
 
 function getScreenTitle(screen) {
@@ -271,7 +272,7 @@ function formatRecommendedPlace(place) {
   };
 }
 
-function MapScreen({ location, appStatus }) {
+function MapScreen({ location, appStatus, user }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState(null);
@@ -321,7 +322,7 @@ function MapScreen({ location, appStatus }) {
         const places = await fetchNearbyReviewPlaces(location);
         const recommended = await recommendKakaoPlacesWithReviewData(
           places,
-          { userLocation: location },
+          { userLocation: location, userPreference: user?.preferences },
           { limit: 10, metricsLimit: 10 }
         );
         if (!ignore) setRecommendedPlaces(recommended.map(formatRecommendedPlace));
@@ -335,7 +336,7 @@ function MapScreen({ location, appStatus }) {
     return () => {
       ignore = true;
     };
-  }, [location.lat, location.lng]);
+  }, [location.lat, location.lng, user?.id]);
 
   useEffect(() => {
     let ignore = false;
@@ -359,7 +360,7 @@ function MapScreen({ location, appStatus }) {
         });
         const recommended = await recommendKakaoPlacesWithReviewData(
           nearbyPlaces,
-          { userLocation: selectedSearchResult },
+          { userLocation: selectedSearchResult, userPreference: user?.preferences },
           { limit: 8, metricsLimit: 8 }
         );
 
@@ -385,7 +386,7 @@ function MapScreen({ location, appStatus }) {
     return () => {
       ignore = true;
     };
-  }, [selectedSearchResult?.id, selectedSearchResult?.lat, selectedSearchResult?.lng]);
+  }, [selectedSearchResult?.id, selectedSearchResult?.lat, selectedSearchResult?.lng, user?.id]);
 
   const selectDestination = (destination) => {
     setSelectedSearchResult(destination);
@@ -528,7 +529,7 @@ function MapScreen({ location, appStatus }) {
   );
 }
 
-function AudioScreen({ location }) {
+function AudioScreen({ location, user }) {
   const [episodes, setEpisodes] = useState([]);
   const [selectedEpisode, setSelectedEpisode] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -559,6 +560,7 @@ function AudioScreen({ location }) {
               location,
               {
                 currentTime: new Date(),
+                userPreference: user?.preferences,
               },
               { storyLimit: 5, placeLimit: 5 }
             )
@@ -583,7 +585,7 @@ function AudioScreen({ location }) {
     return () => {
       ignore = true;
     };
-  }, [location.lat, location.lng]);
+  }, [location.lat, location.lng, user?.id]);
 
   const playEpisode = (episode) => {
     if (!canSpeak()) {
@@ -800,7 +802,11 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
 
       try {
         const places = await fetchNearbyReviewPlaces(location);
-        const recommended = await recommendKakaoPlacesWithReviewData(places, { userLocation: location }, { limit: 10, metricsLimit: 10 });
+        const recommended = await recommendKakaoPlacesWithReviewData(
+          places,
+          { userLocation: location, userPreference: user?.preferences },
+          { limit: 10, metricsLimit: 10 }
+        );
         if (ignore) return;
 
         setNearbyPlaces(recommended.map(formatRecommendedPlace));
@@ -820,7 +826,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     return () => {
       ignore = true;
     };
-  }, [location.lat, location.lng]);
+  }, [location.lat, location.lng, user?.id]);
 
   const showResults = view === "results";
   const showHistory = view === "history";
@@ -1303,6 +1309,27 @@ function AuthScreen({ onAuthenticated }) {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSignup = mode === "signup";
+
+  if (isSignup) {
+    return h(
+      "div",
+      { className: "screen-layer panel-screen auth-screen" },
+      h(
+        "header",
+        { className: "panel-header" },
+        h("span", { className: "header-spacer", "aria-hidden": "true" }),
+        h("h1", null, "회원가입"),
+        h("span", { className: "header-spacer", "aria-hidden": "true" })
+      ),
+      h(SignupPage, {
+        onSignupComplete: onAuthenticated,
+        onShowLogin: () => {
+          setMode("login");
+          setStatus("");
+        },
+      })
+    );
+  }
 
   const submitAuth = async (event) => {
     event.preventDefault();

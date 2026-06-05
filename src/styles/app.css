@@ -1580,6 +1580,64 @@ button {
   font-weight: 900;
 }
 
+.preference-signup {
+  gap: 10px;
+}
+
+.preference-section {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #eee4d5;
+  border-radius: 8px;
+  background: #fffaf1;
+}
+
+.preference-section legend {
+  padding: 0 4px;
+  color: #2b2b2b;
+  font-size: 0.62rem;
+  font-weight: 950;
+}
+
+.preference-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.preference-chip-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.preference-chip {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 33px;
+  place-items: center;
+  border: 1px solid #dfd5c5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #3d403b;
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.preference-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.preference-chip.selected {
+  border-color: #ffb15d;
+  background: #fff0cf;
+  color: #b96814;
+}
+
 .panel-header {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 32px;
