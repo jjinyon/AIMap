@@ -3,12 +3,19 @@ export type PlaceCategory =
   | "cafe"
   | "culture"
   | "heritage"
+  | "museum"
   | "park"
   | "beach"
   | "market"
   | "attraction"
+  | "temple"
+  | "architecture"
   | "shopping"
   | "convenience"
+  | "bank"
+  | "parking"
+  | "pharmacy"
+  | "hotel"
   | "photo_spot"
   | "unknown";
 
@@ -105,14 +112,23 @@ export function mapKakaoPlaceToPlace(kakaoPlace: KakaoPlaceResponse): Place {
 function mapKakaoCategory(categoryCode = "", categoryPath = ""): PlaceCategory {
   const text = `${categoryCode} ${categoryPath}`;
 
+  if (/미술관|박물관/.test(text)) return "museum";
+  if (/해수욕장|해변|바다/.test(text)) return "beach";
+  if (/사찰|절|불교|temple/i.test(text)) return "temple";
+  if (/건축|건물|architecture/i.test(text)) return "architecture";
+  if (/유적|역사|기념|전통/.test(text)) return "heritage";
+  if (/시장|전통시장/.test(text)) return "market";
   if (/FD6|음식|식당|한식|일식|중식|양식/.test(text)) return "food";
   if (/CE7|카페|커피|디저트/.test(text)) return "cafe";
-  if (/CT1|문화|공연|전시|미술관|박물관|영화/.test(text)) return "culture";
+  if (/CS2|편의점/.test(text)) return "convenience";
+  if (/BK9|은행/.test(text)) return "bank";
+  if (/PKG|주차장|parking/i.test(text)) return "parking";
+  if (/PM9|약국/.test(text)) return "pharmacy";
+  if (/AD5|호텔|숙박/.test(text)) return "hotel";
+  if (/CT1|문화|공연|전시|영화/.test(text)) return "culture";
   if (/AT4|관광|명소|전망|아쿠아리움/.test(text)) return "attraction";
   if (/PK6|공원/.test(text)) return "park";
-  if (/MT1|시장|쇼핑|상가/.test(text)) return "shopping";
-  if (/해수욕장|해변|바다/.test(text)) return "beach";
-  if (/유적|역사|기념|전통/.test(text)) return "heritage";
+  if (/MT1|쇼핑|상가/.test(text)) return "shopping";
 
   return "unknown";
 }
