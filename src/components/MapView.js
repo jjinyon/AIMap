@@ -202,7 +202,7 @@ export function MapView({
     mapRef.current.setBounds(bounds);
   }
 
-  return h("div", { className: "map-card" }, h("div", { ref: mapEl, id: "map" }));
+  return h("div", { className: "map-card" }, h("div", { ref: mapEl, className: "map-canvas" }));
 }
 
 function toLatLng(item) {
