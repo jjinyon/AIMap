@@ -514,6 +514,8 @@ function MapScreen({ location, appStatus, user }) {
             isSaved: isDestinationSaved,
             onToggleSave: toggleSaved,
             onSelectPlace: selectDestination,
+            onStory: (place) => setRouteStatus(`${place.name} 장소 이야기를 준비 중입니다.`),
+            onRoute: findFastRoute,
           })
         : h(SearchResults, {
             results: searchResults,
@@ -965,14 +967,23 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
               },
             }),
             selectedPlace
-              ? h(ReviewComposer, {
-                  key: "composer",
-                  place: selectedPlace,
-                  user,
-                  reviews: selectedReviews,
-                  status: reviewStatus,
-                  onSubmit: submitPlaceReview,
-                })
+              ? [
+                  h(PlaceInfoPanel, {
+                    key: "place-info",
+                    place: selectedPlace,
+                    compact: true,
+                    onStory: () => setReviewStatus(`${selectedPlace.name} 장소 이야기를 준비 중입니다.`),
+                    onRoute: () => setReviewStatus(`${selectedPlace.name} 추천 경로를 지도에서 확인해 주세요.`),
+                  }),
+                  h(ReviewComposer, {
+                    key: "composer",
+                    place: selectedPlace,
+                    user,
+                    reviews: selectedReviews,
+                    status: reviewStatus,
+                    onSubmit: submitPlaceReview,
+                  }),
+                ]
               : null,
           ]
     )
@@ -1158,14 +1169,7 @@ function ReviewPlaceRow({ place, showReviewText, isSelected, onSelect }) {
         )
       ),
       h("p", null, showReviewText ? place.reviewText : place.summary),
-      !showReviewText && place.aiReason ? h("small", null, place.aiReason) : null,
-      isSelected
-        ? h(
-            "div",
-            { className: "review-place-detail" },
-            h("p", null, place.description || place.reviewText || place.summary)
-          )
-        : null
+      !showReviewText && place.aiReason ? h("small", null, place.aiReason) : null
     )
   );
 }
@@ -1592,7 +1596,7 @@ function SearchResults({ results, status, selectedId, savedPlaceIds, onSelect, o
   );
 }
 
-function PlaceBottomSheet({ place, recommendedPlaces, status, savedPlaceIds, isSaved, onToggleSave, onSelectPlace }) {
+function PlaceBottomSheet({ place, recommendedPlaces, status, savedPlaceIds, isSaved, onToggleSave, onSelectPlace, onStory, onRoute }) {
   const detailItems = [
     ["카테고리", place.categoryPath || place.categoryName || place.type],
     ["주소", place.address],
@@ -1628,6 +1632,11 @@ function PlaceBottomSheet({ place, recommendedPlaces, status, savedPlaceIds, isS
           h(Icon, { name: "heart" })
         )
       ),
+      h(PlaceInfoPanel, {
+        place,
+        onStory: () => onStory?.(place),
+        onRoute: () => onRoute?.(place),
+      }),
       place.address ? h("p", { className: "place-sheet-address" }, place.address) : null,
       h(
         "div",
@@ -1677,6 +1686,41 @@ function PlaceBottomSheet({ place, recommendedPlaces, status, savedPlaceIds, isS
   );
 }
 
+function PlaceInfoPanel({ place, compact = false, onStory, onRoute }) {
+  const tags = getPlaceDisplayTags(place);
+  const ratingLabel = getPlaceRatingLabel(place);
+  const distanceLabel = getPlaceDistanceLabel(place);
+  const scoreLabel = getPlaceRecommendationScoreLabel(place);
+
+  return h(
+    "section",
+    { className: compact ? "place-info-panel compact" : "place-info-panel", "aria-label": `${place.name} 장소 요약` },
+    h("div", { className: "place-map-preview", "aria-hidden": "true" }, "지도"),
+    h("div", { className: "place-info-divider", "aria-hidden": "true" }),
+    h(
+      "div",
+      { className: "place-info-main" },
+      h("h2", null, place.name),
+      ratingLabel ? h("p", { className: "place-info-rating" }, h("span", null, "★★★★★"), ` ${ratingLabel}`) : null,
+      distanceLabel ? h("p", { className: "place-info-distance" }, `📍${distanceLabel}`) : null,
+      scoreLabel ? h("p", { className: "place-info-score" }, `추천도 ${scoreLabel}`) : null,
+      tags.length
+        ? h(
+            "div",
+            { className: "place-info-tags" },
+            tags.map((tag) => h("span", { key: tag }, `#${tag}`))
+          )
+        : null,
+      h(
+        "div",
+        { className: "place-info-actions" },
+        h("button", { className: "place-info-action", type: "button", onClick: onStory }, "장소 이야기 듣기"),
+        h("button", { className: "place-info-action primary", type: "button", onClick: onRoute }, "추천 경로 보기")
+      )
+    )
+  );
+}
+
 function makeKakaoPlaceDescription(place = {}) {
   const category = place.categoryPath || place.categoryName || place.type || "장소";
   const address = place.address ? `${place.address}에 있는 ` : "";
@@ -1684,6 +1728,51 @@ function makeKakaoPlaceDescription(place = {}) {
   const distance = place.distance ? ` 기준 지점에서 약 ${place.distance}m 떨어져 있습니다.` : "";
 
   return `카카오 장소 검색 API에서 확인한 ${address}${category}입니다.${distance}${phone}`;
+}
+
+function getPlaceRatingLabel(place = {}) {
+  const rating = Number(place.rating || place.googleRating || place.localRating || 0);
+  if (!rating) return "";
+
+  return rating.toFixed(1);
+}
+
+function getPlaceDistanceLabel(place = {}) {
+  const distance = Number(place.distance || 0);
+  if (!distance) return "";
+
+  return `${Math.round(distance)}m`;
+}
+
+function getPlaceRecommendationScoreLabel(place = {}) {
+  const rawScore = Number(place.recommendationScore || place.score || 0);
+  if (!rawScore) return "";
+
+  const score = rawScore <= 1 ? rawScore * 100 : rawScore <= 5 ? rawScore * 20 : rawScore;
+  return `${Math.max(0, Math.min(100, Math.round(score)))}점`;
+}
+
+function getPlaceDisplayTags(place = {}) {
+  const sourceTags = Array.isArray(place.tags) ? place.tags : [];
+  const inferredTags = [
+    inferTagFromCategory(place),
+    place.aiReason ? "학생추천" : "",
+    /조용|quiet|공부|카페|cafe/i.test(`${place.summary || ""} ${place.description || ""}`) ? "조용함" : "",
+  ];
+
+  return [...sourceTags, ...inferredTags]
+    .map((tag) => String(tag || "").replace(/^#/, "").trim())
+    .filter(Boolean)
+    .filter((tag, index, tags) => tags.indexOf(tag) === index)
+    .slice(0, 3);
+}
+
+function inferTagFromCategory(place = {}) {
+  const text = String([place.categoryPath, place.categoryName, place.type, place.category].filter(Boolean).join(" "));
+  if (/카페|cafe|CE7/i.test(text)) return "공부";
+  if (/음식|맛집|식당|FD6/i.test(text)) return "맛집";
+  if (/문화|관광|공원|CT1|AT4|PK6/i.test(text)) return "산책";
+  return "장소";
 }
 
 function RouteOptionStrip({ activeId, onSelect }) {
