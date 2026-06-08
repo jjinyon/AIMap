@@ -35,8 +35,6 @@ export function PlaceDetailPage({
         selectedPlace: place,
         onSelectPlace: null,
         searchResults: [place],
-        selectedSearchResult: place,
-        onSelectSearchResult: null,
         routePath: [],
       })
     ),

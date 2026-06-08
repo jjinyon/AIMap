@@ -276,7 +276,7 @@ function formatRecommendedPlace(place) {
 function MapScreen({ location, appStatus, user }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
-  const [selectedSearchResult, setSelectedSearchResult] = useState(null);
+  const [selectedPlace, setSelectedPlace] = useState(null);
   const [destinationRecommendedPlaces, setDestinationRecommendedPlaces] = useState([]);
   const [destinationRecommendationStatus, setDestinationRecommendationStatus] = useState("");
   const [routePath, setRoutePath] = useState([]);
@@ -285,19 +285,30 @@ function MapScreen({ location, appStatus, user }) {
   const [saveStatus, setSaveStatus] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [activeRouteOption, setActiveRouteOption] = useState("");
-  const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(true);
+  const [recommendationMode, setRecommendationMode] = useState(true);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
   const [recommendedPlaces, setRecommendedPlaces] = useState([]);
+  const [mapCenter, setMapCenter] = useState(location?.lat && location?.lng ? location : null);
+  const [mapBounds, setMapBounds] = useState(null);
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [bottomSheetState, setBottomSheetState] = useState("collapsed");
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces());
-  const hasDestination = Boolean(selectedSearchResult);
+
+  useEffect(() => {
+    if (!mapCenter && location?.lat && location?.lng) {
+      setMapCenter({ lat: location.lat, lng: location.lng });
+    }
+  }, [location, mapCenter]);
+  const hasDestination = Boolean(selectedPlace);
   const savedPlaceIds = new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id));
-  const isDestinationSaved = selectedSearchResult ? isPlaceSaved(selectedSearchResult, savedPlaces) : false;
+  const isDestinationSaved = selectedPlace ? isPlaceSaved(selectedPlace, savedPlaces) : false;
   const destinationRecommendedMapPlaces = destinationRecommendedPlaces.map((place) => ({
     ...place,
     markerKind: "recommended",
     reason: place.aiReason || place.summary || place.address || "",
   }));
-  const recommendedMapPlaces = showRecommendedPlaces
+  const recommendedMapPlaces = recommendationMode
     ? recommendedPlaces.map((place) => ({
         ...place,
         markerKind: "recommended",
@@ -319,11 +330,16 @@ function MapScreen({ location, appStatus, user }) {
     let ignore = false;
 
     async function loadRecommendedPlaces() {
+      if (!recommendationMode || !mapCenter?.lat || !mapCenter?.lng) {
+        if (!ignore) setRecommendedPlaces([]);
+        return;
+      }
+
       try {
-        const places = await fetchNearbyReviewPlaces(location);
+        const places = await fetchNearbyReviewPlaces(mapCenter);
         const recommended = await recommendKakaoPlacesWithReviewData(
           places,
-          { userLocation: location, userPreference: user?.preferences },
+          { userLocation: mapCenter, userPreference: user?.preferences },
           { limit: 10, metricsLimit: 10 }
         );
         if (!ignore) setRecommendedPlaces(recommended.map(formatRecommendedPlace));
@@ -337,31 +353,31 @@ function MapScreen({ location, appStatus, user }) {
     return () => {
       ignore = true;
     };
-  }, [location.lat, location.lng, user?.id]);
+  }, [recommendationMode, mapCenter?.lat, mapCenter?.lng, user?.id]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadDestinationRecommendedPlaces() {
-      if (!selectedSearchResult?.lat || !selectedSearchResult?.lng) {
+      if (!selectedPlace?.lat || !selectedPlace?.lng) {
         setDestinationRecommendedPlaces([]);
         setDestinationRecommendationStatus("");
         return;
       }
 
       setDestinationRecommendedPlaces([]);
-      setDestinationRecommendationStatus(`${selectedSearchResult.name} 주변 추천 장소를 찾는 중입니다.`);
+      setDestinationRecommendationStatus(`${selectedPlace.name} 주변 추천 장소를 찾는 중입니다.`);
 
       try {
-        const places = await fetchNearbyReviewPlaces(selectedSearchResult);
-        const selectedKey = String(selectedSearchResult.kakaoPlaceId || selectedSearchResult.id || "");
+        const places = await fetchNearbyReviewPlaces(selectedPlace);
+        const selectedKey = String(selectedPlace.kakaoPlaceId || selectedPlace.id || "");
         const nearbyPlaces = places.filter((place) => {
           const key = String(place.kakaoPlaceId || place.id || "");
           return key && key !== selectedKey;
         });
         const recommended = await recommendKakaoPlacesWithReviewData(
           nearbyPlaces,
-          { userLocation: selectedSearchResult, userPreference: user?.preferences },
+          { userLocation: selectedPlace, userPreference: user?.preferences },
           { limit: 8, metricsLimit: 8 }
         );
 
@@ -371,8 +387,8 @@ function MapScreen({ location, appStatus, user }) {
         setDestinationRecommendedPlaces(formattedPlaces);
         setDestinationRecommendationStatus(
           formattedPlaces.length
-            ? `${selectedSearchResult.name} 주변 추천 장소 ${formattedPlaces.length}곳입니다.`
-            : `${selectedSearchResult.name} 주변에서 추천할 장소를 찾지 못했습니다.`
+            ? `${selectedPlace.name} 주변 추천 장소 ${formattedPlaces.length}곳입니다.`
+            : `${selectedPlace.name} 주변에서 추천할 장소를 찾지 못했습니다.`
         );
       } catch {
         if (!ignore) {
@@ -387,10 +403,12 @@ function MapScreen({ location, appStatus, user }) {
     return () => {
       ignore = true;
     };
-  }, [selectedSearchResult?.id, selectedSearchResult?.lat, selectedSearchResult?.lng, user?.id]);
+  }, [selectedPlace?.id, selectedPlace?.lat, selectedPlace?.lng, user?.id]);
 
   const selectDestination = (destination) => {
-    setSelectedSearchResult(destination);
+    setSelectedPlace(destination);
+    setMapCenter({ lat: destination.lat, lng: destination.lng });
+    setBottomSheetState("collapsed");
     setRoutePath([]);
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
@@ -398,12 +416,19 @@ function MapScreen({ location, appStatus, user }) {
   };
 
   const closeDestinationDetail = () => {
-    setSelectedSearchResult(null);
+    setIsTrackingLocation(false);
+    setSelectedPlace(null);
     setDestinationRecommendedPlaces([]);
     setDestinationRecommendationStatus("");
     setRoutePath([]);
     setRouteStatus("");
     setActiveRouteOption("");
+    setBottomSheetState("collapsed");
+  };
+
+  const closeSearchResults = () => {
+    setIsTrackingLocation(false);
+    setShowSearchResults(false);
   };
 
   const toggleSaved = (place) => {
@@ -412,7 +437,7 @@ function MapScreen({ location, appStatus, user }) {
     setSavedPlaces(nextPlaces);
     setShowSavedPlaces(true);
     const message = wasSaved ? "저장한 장소에서 삭제했습니다." : "나만의 장소로 저장했습니다.";
-    if (selectedSearchResult?.id === place.id) {
+    if (selectedPlace?.id === place.id) {
       setRouteStatus(message);
       return;
     }
@@ -421,14 +446,14 @@ function MapScreen({ location, appStatus, user }) {
   };
 
   const findFastRoute = async () => {
-    if (!selectedSearchResult) return;
+    if (!selectedPlace) return;
 
     setRoutePath([]);
     setActiveRouteOption("fast");
     setRouteStatus("가장 빠른 도보 경로를 찾는 중입니다.");
 
     try {
-      const route = await findRoute(location, selectedSearchResult);
+      const route = await findRoute(location, selectedPlace);
       setRoutePath(route.points);
       setRouteStatus(formatRouteSummary(route));
     } catch {
@@ -442,7 +467,8 @@ function MapScreen({ location, appStatus, user }) {
       setSearchStatus("");
       setRouteStatus("");
       setSearchResults([]);
-      setSelectedSearchResult(null);
+      setShowSearchResults(false);
+      setSelectedPlace(null);
       setRoutePath([]);
       setActiveRouteOption("");
       return;
@@ -456,7 +482,8 @@ function MapScreen({ location, appStatus, user }) {
       setSearchResults(results);
       setSearchStatus(results.length ? `${results.length}개의 장소를 찾았습니다. 장소를 선택하거나 하트로 저장하세요.` : "검색 결과가 없습니다.");
       setSaveStatus("");
-      setSelectedSearchResult(null);
+      setShowSearchResults(true);
+      setSelectedPlace(null);
       setRoutePath([]);
       setRouteStatus("");
       setActiveRouteOption("");
@@ -465,7 +492,7 @@ function MapScreen({ location, appStatus, user }) {
       setSaveStatus("");
       setRouteStatus("");
       setSearchResults([]);
-      setSelectedSearchResult(null);
+      setSelectedPlace(null);
       setRoutePath([]);
       setActiveRouteOption("");
     } finally {
@@ -478,13 +505,21 @@ function MapScreen({ location, appStatus, user }) {
     { className: "screen-layer map-screen" },
     h(MapView, {
       location,
+      mapCenter,
+      mapBounds,
       places: visibleMapPlaces,
-      selectedPlace: selectedSearchResult,
+      selectedPlace,
       onSelectPlace: selectDestination,
       searchResults,
-      selectedSearchResult,
-      onSelectSearchResult: selectDestination,
       routePath,
+      isTrackingLocation,
+      onTrackingChange: () => setIsTrackingLocation(false),
+      onMapCenterChange: (center) => {
+        if (!center) return;
+        if (mapCenter?.lat === center.lat && mapCenter?.lng === center.lng) return;
+        setMapCenter(center);
+      },
+      onMapBoundsChange: setMapBounds,
     }),
     h(
       "div",
@@ -510,14 +545,14 @@ function MapScreen({ location, appStatus, user }) {
             },
           })
         : h(MapPlaceToggles, {
-            showRecommendedPlaces,
+            showRecommendedPlaces: recommendationMode,
             showSavedPlaces,
-            onToggleRecommended: () => setShowRecommendedPlaces((value) => !value),
+            onToggleRecommended: () => setRecommendationMode((value) => !value),
             onToggleSaved: () => setShowSavedPlaces((value) => !value),
           }),
       hasDestination
         ? h(PlaceDetailPage, {
-            place: selectedSearchResult,
+            place: selectedPlace,
             location,
             recommendedPlaces: destinationRecommendedPlaces,
             routeStatus,
@@ -530,16 +565,31 @@ function MapScreen({ location, appStatus, user }) {
             onRoute: findFastRoute,
             onSelectRecommended: selectDestination,
             onToggleSave: toggleSaved,
+            bottomSheetState,
+            onBottomSheetStateChange: setBottomSheetState,
           })
-        : h(SearchResults, {
+        : showSearchResults
+        ? h(SearchResults, {
             results: searchResults,
             status: saveStatus || searchStatus,
-            selectedId: selectedSearchResult?.id,
+            selectedId: selectedPlace?.id,
             savedPlaceIds,
-            onSelect: selectDestination,
+            onSelect: (result) => {
+              selectDestination(result);
+              setShowSearchResults(false);
+            },
             onToggleSave: toggleSaved,
-          }),
-      h(MapActions)
+            onClose: closeSearchResults,
+          })
+        : null,
+      h(MapActions, {
+        onFocusLocation: () => {
+          if (location?.lat && location?.lng) {
+            setMapCenter({ lat: location.lat, lng: location.lng });
+            setIsTrackingLocation(true);
+          }
+        },
+      })
     ),
     appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
   );
@@ -1565,13 +1615,29 @@ function SearchBar({ value, isSearching, onChange, onSubmit }) {
   );
 }
 
-function SearchResults({ results, status, selectedId, savedPlaceIds, onSelect, onToggleSave }) {
+function SearchResults({ results, status, selectedId, savedPlaceIds, onSelect, onToggleSave, onClose }) {
   if (!status && results.length === 0) return null;
 
   return h(
     "section",
     { className: "search-results", "aria-label": "장소 검색 결과" },
-    status ? h("p", { className: "search-status" }, status) : null,
+    h(
+      "div",
+      { className: "search-results-header" },
+      h("p", { className: "search-status" }, status),
+      onClose
+        ? h(
+            "button",
+            {
+              className: "search-results-close",
+              type: "button",
+              "aria-label": "검색 결과 닫기",
+              onClick: onClose,
+            },
+            "×"
+          )
+        : null
+    ),
     results.map((result) =>
       h(
         "div",
@@ -1685,12 +1751,15 @@ function TopNav({ title, onBack, onSettings }) {
   );
 }
 
-function MapActions() {
+function MapActions({ onFocusLocation }) {
   return h(
     "div",
     { className: "map-actions", "aria-label": "지도 도구" },
-    h("button", { type: "button", "aria-label": "현재 위치 보기" }, h(Icon, { name: "target" })),
-    h("button", { type: "button", "aria-label": "지도 레이어" }, h(Icon, { name: "layers" }))
+    h("button", { 
+      type: "button", 
+      "aria-label": "현재 위치 보기",
+      onClick: onFocusLocation,
+    }, h(Icon, { name: "target" }))
   );
 }
 

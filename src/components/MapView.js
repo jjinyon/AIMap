@@ -7,9 +7,9 @@ export function MapView({
   selectedPlace,
   onSelectPlace,
   searchResults = [],
-  selectedSearchResult,
-  onSelectSearchResult,
   routePath = [],
+  isTrackingLocation = true,
+  onTrackingChange,
 }) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
@@ -20,6 +20,7 @@ export function MapView({
   const searchMarkersRef = useRef([]);
   const routeLineRef = useRef(null);
   const selectedPlaceRouteRef = useRef(null);
+  const dragListenerRef = useRef(null);
 
   useEffect(() => {
     if (!window.kakao?.maps || !mapEl.current || mapRef.current) return;
@@ -35,6 +36,12 @@ export function MapView({
     });
 
     kakao.maps.event.addListener(mapRef.current, "click", closeInfoWindow);
+    
+    // 지도 드래그 감지
+    dragListenerRef.current = kakao.maps.event.addListener(mapRef.current, "dragend", () => {
+      onTrackingChange?.(false);
+    });
+
     setTimeout(() => mapRef.current?.relayout(), 0);
   }, [location.lat, location.lng]);
 
@@ -42,7 +49,11 @@ export function MapView({
     if (!mapRef.current) return;
 
     const center = toLatLng(location);
-    mapRef.current.setCenter(center);
+    
+    // isTrackingLocation이 true일 때만 자동으로 지도를 중심으로 이동
+    if (isTrackingLocation) {
+      mapRef.current.setCenter(center);
+    }
 
     if (userMarkerRef.current) {
       userMarkerRef.current.setPosition(center);
@@ -59,7 +70,7 @@ export function MapView({
     kakao.maps.event.addListener(userMarkerRef.current, "click", () => {
       openInfoWindow(userInfoRef.current, userMarkerRef.current);
     });
-  }, [location]);
+  }, [location, isTrackingLocation]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -98,14 +109,14 @@ export function MapView({
 
       kakao.maps.event.addListener(marker, "click", () => {
         openInfoWindow(infoWindow, marker);
-        onSelectSearchResult?.(result);
+        onSelectPlace?.(result);
       });
 
       return marker;
     });
 
-    if (selectedSearchResult) {
-      const point = toLatLng(selectedSearchResult);
+    if (selectedPlace && searchResults.some((result) => result.id === selectedPlace.id)) {
+      const point = toLatLng(selectedPlace);
       mapRef.current.setCenter(point);
       mapRef.current.setLevel(3);
 
@@ -115,7 +126,7 @@ export function MapView({
     if (searchResults.length > 1) {
       fitPlaces(searchResults);
     }
-  }, [searchResults, selectedSearchResult, onSelectSearchResult]);
+  }, [searchResults, selectedPlace, onSelectPlace]);
 
   useEffect(() => {
     if (!mapRef.current) return;
