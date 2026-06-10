@@ -8,8 +8,12 @@ export function MapView({
   onSelectPlace,
   searchResults = [],
   routePath = [],
+<<<<<<< HEAD
   isTrackingLocation = true,
   onTrackingChange,
+=======
+  routePlaces = [],
+>>>>>>> 772f662 (Add route recommendation feature)
 }) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
@@ -19,6 +23,8 @@ export function MapView({
   const placeMarkersRef = useRef([]);
   const searchMarkersRef = useRef([]);
   const routeLineRef = useRef(null);
+  const routePlaceLineRef = useRef(null);
+  const routePlaceMarkersRef = useRef([]);
   const selectedPlaceRouteRef = useRef(null);
   const dragListenerRef = useRef(null);
 
@@ -155,12 +161,54 @@ export function MapView({
   useEffect(() => {
     if (!mapRef.current) return;
 
+    if (routePlaceLineRef.current) {
+      routePlaceLineRef.current.setMap(null);
+      routePlaceLineRef.current = null;
+    }
+    if (selectedPlaceRouteRef.current) {
+      selectedPlaceRouteRef.current.setMap(null);
+      selectedPlaceRouteRef.current = null;
+    }
+    clearMarkers(routePlaceMarkersRef.current);
+    routePlaceMarkersRef.current = [];
+
+    const validPlaces = routePlaces.filter(hasCoordinate);
+    if (!validPlaces.length) return;
+
+    closeInfoWindow();
+    const path = validPlaces.map(toLatLng);
+    routePlaceLineRef.current = new kakao.maps.Polyline({
+      map: mapRef.current,
+      path,
+      strokeWeight: 6,
+      strokeColor: "#16a34a",
+      strokeOpacity: 0.9,
+      strokeStyle: "solid",
+    });
+
+    routePlaceMarkersRef.current = validPlaces.map((place, index) => {
+      const markerKind = index === 0 ? "routeStart" : index === validPlaces.length - 1 ? "routeEnd" : "routeMiddle";
+      const marker = createMarker(place, place.name, markerKind);
+      const infoWindow = createInfoWindow(
+        `<strong>${escapeHtml(`${index + 1}. ${place.name}`)}</strong><br />${escapeHtml(place.category || "장소")}`
+      );
+
+      kakao.maps.event.addListener(marker, "click", () => openInfoWindow(infoWindow, marker));
+      return marker;
+    });
+
+    fitLatLngs(path);
+  }, [routePlaces]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
     if (selectedPlaceRouteRef.current) {
       selectedPlaceRouteRef.current.setMap(null);
       selectedPlaceRouteRef.current = null;
     }
 
-    if (!selectedPlace) return;
+    if (!selectedPlace || routePlaces.length) return;
 
     const start = toLatLng(location);
     const end = toLatLng(selectedPlace);
@@ -179,7 +227,7 @@ export function MapView({
     });
 
     fitLatLngs([start, end]);
-  }, [location, selectedPlace]);
+  }, [location, selectedPlace, routePlaces.length]);
 
   function createMarker(place, title, markerKind = "default") {
     return new kakao.maps.Marker({
@@ -218,6 +266,10 @@ export function MapView({
 
 function toLatLng(item) {
   return new kakao.maps.LatLng(Number(item.lat), Number(item.lng));
+}
+
+function hasCoordinate(item = {}) {
+  return Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng));
 }
 
 function createInfoWindow(content) {
@@ -283,6 +335,27 @@ const markerOptions = {
     anchorX: 19,
     anchorY: 46,
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48"><path d="M19 47S3 30.8 3 18.5a16 16 0 0 1 32 0C35 30.8 19 47 19 47z" fill="#ef4444" stroke="#fff" stroke-width="3"/><circle cx="19" cy="18.5" r="6.5" fill="#fff"/></svg>`,
+  },
+  routeStart: {
+    width: 42,
+    height: 50,
+    anchorX: 21,
+    anchorY: 48,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="50" viewBox="0 0 42 50"><path d="M21 49S4 32.5 4 20a17 17 0 1 1 34 0c0 12.5-17 29-17 29z" fill="#16a34a" stroke="#fff" stroke-width="3"/><circle cx="21" cy="20" r="7" fill="#fff"/><path d="M18.5 20.5 20.4 22.4 24.2 17.8" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  },
+  routeMiddle: {
+    width: 36,
+    height: 44,
+    anchorX: 18,
+    anchorY: 42,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><path d="M18 43S3 28 3 17a15 15 0 1 1 30 0c0 11-15 26-15 26z" fill="#64748b" stroke="#fff" stroke-width="3"/><circle cx="18" cy="17" r="5.5" fill="#fff"/></svg>`,
+  },
+  routeEnd: {
+    width: 42,
+    height: 50,
+    anchorX: 21,
+    anchorY: 48,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="42" height="50" viewBox="0 0 42 50"><path d="M21 49S4 32.5 4 20a17 17 0 1 1 34 0c0 12.5-17 29-17 29z" fill="#ef4444" stroke="#fff" stroke-width="3"/><circle cx="21" cy="20" r="7" fill="#fff"/><path d="M18 17h6v6h-6z" fill="#ef4444"/></svg>`,
   },
   default: {
     width: 34,

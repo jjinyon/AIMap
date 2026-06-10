@@ -1,4 +1,5 @@
 import { MapView } from "../components/MapView.js";
+import { RouteBottomSheet } from "../components/RouteBottomSheet.js";
 import { PlaceDetailPage } from "./PlaceDetailPage.jsx";
 import { SignupPage } from "./SignupPage.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
@@ -9,7 +10,7 @@ import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
-import { recommendKakaoPlacesWithReviewData } from "../services/recommendation/index.js";
+import { recommendKakaoPlacesWithReviewData, recommendLocalExperienceRoutes } from "../services/recommendation/index.js";
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
 import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
 import {
@@ -281,6 +282,9 @@ function MapScreen({ location, appStatus, user }) {
   const [destinationRecommendationStatus, setDestinationRecommendationStatus] = useState("");
   const [routePath, setRoutePath] = useState([]);
   const [routeStatus, setRouteStatus] = useState("");
+  const [localRoutes, setLocalRoutes] = useState([]);
+  const [selectedLocalRoute, setSelectedLocalRoute] = useState(null);
+  const [routeSheetOpen, setRouteSheetOpen] = useState(false);
   const [searchStatus, setSearchStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -323,8 +327,11 @@ function MapScreen({ location, appStatus, user }) {
       }))
     : [];
   const visibleMapPlaces = hasDestination
-    ? destinationRecommendedMapPlaces
+    ? selectedLocalRoute
+      ? []
+      : destinationRecommendedMapPlaces
     : [...recommendedMapPlaces, ...savedMapPlaces];
+  const selectedRoutePlaces = selectedLocalRoute?.places || [];
 
   useEffect(() => {
     let ignore = false;
@@ -406,9 +413,14 @@ function MapScreen({ location, appStatus, user }) {
   }, [selectedPlace?.id, selectedPlace?.lat, selectedPlace?.lng, user?.id]);
 
   const selectDestination = (destination) => {
+<<<<<<< HEAD
     setSelectedPlace(destination);
     setMapCenter({ lat: destination.lat, lng: destination.lng });
     setBottomSheetState("collapsed");
+=======
+    setSelectedSearchResult(destination);
+    closeLocalRoutes();
+>>>>>>> 772f662 (Add route recommendation feature)
     setRoutePath([]);
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
@@ -423,12 +435,22 @@ function MapScreen({ location, appStatus, user }) {
     setRoutePath([]);
     setRouteStatus("");
     setActiveRouteOption("");
+<<<<<<< HEAD
     setBottomSheetState("collapsed");
   };
 
   const closeSearchResults = () => {
     setIsTrackingLocation(false);
     setShowSearchResults(false);
+=======
+    closeLocalRoutes();
+  };
+
+  const closeLocalRoutes = () => {
+    setRouteSheetOpen(false);
+    setLocalRoutes([]);
+    setSelectedLocalRoute(null);
+>>>>>>> 772f662 (Add route recommendation feature)
   };
 
   const toggleSaved = (place) => {
@@ -458,6 +480,34 @@ function MapScreen({ location, appStatus, user }) {
       setRouteStatus(formatRouteSummary(route));
     } catch {
       setRouteStatus("현재 위치에서 목적지까지의 도보 경로를 찾지 못했습니다.");
+    }
+  };
+
+  const openLocalExperienceRoutes = async () => {
+    const candidatePlaces = hasDestination ? destinationRecommendedPlaces : recommendedPlaces;
+    setRouteSheetOpen(true);
+    setSelectedLocalRoute(null);
+    setLocalRoutes([]);
+    setActiveRouteOption("local");
+    setRoutePath([]);
+    setRouteStatus("지역 만끽 경로를 추천하는 중입니다.");
+
+    try {
+      const routes = recommendLocalExperienceRoutes({
+        candidatePlaces,
+        userLocation: location,
+        destination: hasDestination ? selectedSearchResult : undefined,
+        maxRoutes: 3,
+        minPlaces: 3,
+        maxPlaces: 5,
+        context: { userLocation: location, userPreference: user?.preferences },
+      });
+
+      setLocalRoutes(routes);
+      setRouteStatus(routes.length ? `추천 경로 ${routes.length}개를 찾았습니다.` : "추천 경로를 만들 수 있는 후보 장소가 부족합니다.");
+    } catch {
+      setLocalRoutes([]);
+      setRouteStatus("추천 경로를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
   };
 
@@ -512,6 +562,7 @@ function MapScreen({ location, appStatus, user }) {
       onSelectPlace: selectDestination,
       searchResults,
       routePath,
+<<<<<<< HEAD
       isTrackingLocation,
       onTrackingChange: () => setIsTrackingLocation(false),
       onMapCenterChange: (center) => {
@@ -520,6 +571,9 @@ function MapScreen({ location, appStatus, user }) {
         setMapCenter(center);
       },
       onMapBoundsChange: setMapBounds,
+=======
+      routePlaces: selectedRoutePlaces,
+>>>>>>> 772f662 (Add route recommendation feature)
     }),
     h(
       "div",
@@ -539,6 +593,11 @@ function MapScreen({ location, appStatus, user }) {
                 return;
               }
 
+              if (optionId === "local") {
+                openLocalExperienceRoutes();
+                return;
+              }
+
               setActiveRouteOption(optionId);
               setRoutePath([]);
               setRouteStatus("이 경로 옵션은 준비 중입니다.");
@@ -550,7 +609,20 @@ function MapScreen({ location, appStatus, user }) {
             onToggleRecommended: () => setRecommendationMode((value) => !value),
             onToggleSaved: () => setShowSavedPlaces((value) => !value),
           }),
-      hasDestination
+      routeSheetOpen
+        ? h(RouteBottomSheet, {
+            routes: localRoutes,
+            selectedRoute: selectedLocalRoute,
+            location,
+            status: routeStatus,
+            onSelectRoute: (route) => {
+              setSelectedLocalRoute(route);
+              setRouteStatus(route.title);
+            },
+            onBackToList: () => setSelectedLocalRoute(null),
+            onClose: closeLocalRoutes,
+          })
+        : hasDestination
         ? h(PlaceDetailPage, {
             place: selectedPlace,
             location,
@@ -562,7 +634,7 @@ function MapScreen({ location, appStatus, user }) {
             onClose: closeDestinationDetail,
             onSave: toggleSaved,
             onStory: (place) => setRouteStatus(`${place.name} 장소 이야기를 준비 중입니다.`),
-            onRoute: findFastRoute,
+            onRoute: openLocalExperienceRoutes,
             onSelectRecommended: selectDestination,
             onToggleSave: toggleSaved,
             bottomSheetState,
