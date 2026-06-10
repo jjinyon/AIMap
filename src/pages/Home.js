@@ -413,14 +413,10 @@ function MapScreen({ location, appStatus, user }) {
   }, [selectedPlace?.id, selectedPlace?.lat, selectedPlace?.lng, user?.id]);
 
   const selectDestination = (destination) => {
-<<<<<<< HEAD
     setSelectedPlace(destination);
     setMapCenter({ lat: destination.lat, lng: destination.lng });
     setBottomSheetState("collapsed");
-=======
-    setSelectedSearchResult(destination);
     closeLocalRoutes();
->>>>>>> 772f662 (Add route recommendation feature)
     setRoutePath([]);
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
@@ -435,22 +431,19 @@ function MapScreen({ location, appStatus, user }) {
     setRoutePath([]);
     setRouteStatus("");
     setActiveRouteOption("");
-<<<<<<< HEAD
     setBottomSheetState("collapsed");
+    closeLocalRoutes();
   };
 
   const closeSearchResults = () => {
     setIsTrackingLocation(false);
     setShowSearchResults(false);
-=======
-    closeLocalRoutes();
   };
 
   const closeLocalRoutes = () => {
     setRouteSheetOpen(false);
     setLocalRoutes([]);
     setSelectedLocalRoute(null);
->>>>>>> 772f662 (Add route recommendation feature)
   };
 
   const toggleSaved = (place) => {
@@ -496,7 +489,7 @@ function MapScreen({ location, appStatus, user }) {
       const routes = recommendLocalExperienceRoutes({
         candidatePlaces,
         userLocation: location,
-        destination: hasDestination ? selectedSearchResult : undefined,
+        destination: hasDestination ? selectedPlace : undefined,
         maxRoutes: 3,
         minPlaces: 3,
         maxPlaces: 5,
@@ -562,7 +555,6 @@ function MapScreen({ location, appStatus, user }) {
       onSelectPlace: selectDestination,
       searchResults,
       routePath,
-<<<<<<< HEAD
       isTrackingLocation,
       onTrackingChange: () => setIsTrackingLocation(false),
       onMapCenterChange: (center) => {
@@ -571,9 +563,7 @@ function MapScreen({ location, appStatus, user }) {
         setMapCenter(center);
       },
       onMapBoundsChange: setMapBounds,
-=======
       routePlaces: selectedRoutePlaces,
->>>>>>> 772f662 (Add route recommendation feature)
     }),
     h(
       "div",

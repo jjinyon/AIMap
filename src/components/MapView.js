@@ -8,12 +8,9 @@ export function MapView({
   onSelectPlace,
   searchResults = [],
   routePath = [],
-<<<<<<< HEAD
   isTrackingLocation = true,
   onTrackingChange,
-=======
   routePlaces = [],
->>>>>>> 772f662 (Add route recommendation feature)
 }) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
