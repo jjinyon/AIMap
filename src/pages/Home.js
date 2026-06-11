@@ -274,6 +274,62 @@ function formatRecommendedPlace(place) {
   };
 }
 
+const ROUTE_CORRIDOR_SAMPLE_COUNT = 3;
+
+function sampleRouteCorridor(routePoints = [], sampleCount = ROUTE_CORRIDOR_SAMPLE_COUNT) {
+  if (!Array.isArray(routePoints) || routePoints.length < 2) return [];
+
+  const lastIndex = routePoints.length - 1;
+
+  return Array.from({ length: sampleCount }, (_, index) => {
+    const ratio = (index + 1) / (sampleCount + 1);
+    const point = routePoints[Math.max(0, Math.min(lastIndex, Math.round(lastIndex * ratio)))] || [];
+    const lat = Number(point[0]);
+    const lng = Number(point[1]);
+
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }).filter(Boolean);
+}
+
+function getPlaceIdentity(place = {}) {
+  return String(place.kakaoPlaceId || place.placeId || place.id || `${place.name || ""}-${place.address || ""}`);
+}
+
+function isSamePlace(a = {}, b = {}) {
+  const aKey = getPlaceIdentity(a);
+  const bKey = getPlaceIdentity(b);
+  if (aKey && bKey && aKey === bKey) return true;
+
+  return Boolean(a.name && b.name && a.name === b.name && a.address && b.address && a.address === b.address);
+}
+
+function dedupeCandidatePlaces(places = [], destination) {
+  const seen = new Set();
+
+  return places.filter((place) => {
+    if (!place?.lat || !place?.lng) return false;
+    if (destination && isSamePlace(place, destination)) return false;
+
+    const key = getPlaceIdentity(place);
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildLocalRoutes(candidatePlaces, location, destination, user) {
+  return recommendLocalExperienceRoutes({
+    candidatePlaces,
+    userLocation: location,
+    destination,
+    maxRoutes: 3,
+    minPlaces: 3,
+    maxPlaces: 5,
+    context: { userLocation: location, userPreference: user?.preferences },
+  });
+}
+
 function MapScreen({ location, appStatus, user }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -493,25 +549,50 @@ function MapScreen({ location, appStatus, user }) {
   };
 
   const openLocalExperienceRoutes = async () => {
-    const candidatePlaces = hasDestination ? destinationRecommendedPlaces : recommendedPlaces;
     setRouteSheetOpen(false);
     setSelectedLocalRoute(null);
     setLocalRoutes([]);
     setRouteModeActive(true);
     setActiveRouteOption("local");
     setRoutePath([]);
-    setRouteStatus("지역 만끽 경로를 추천하는 중입니다.");
+    setRouteStatus("최단 경로 주변의 추천 장소를 찾는 중입니다.");
 
     try {
-      const routes = recommendLocalExperienceRoutes({
-        candidatePlaces,
-        userLocation: location,
-        destination: hasDestination ? selectedPlace : undefined,
-        maxRoutes: 3,
-        minPlaces: 3,
-        maxPlaces: 5,
-        context: { userLocation: location, userPreference: user?.preferences },
-      });
+      let candidatePlaces = recommendedPlaces;
+
+      if (hasDestination) {
+        const baseRoute = await findRoute(location, selectedPlace);
+        setRoutePath(baseRoute.points);
+
+        const samplePoints = sampleRouteCorridor(baseRoute.points);
+        const nearbyGroups = await Promise.all(
+          samplePoints.map((point) => fetchNearbyReviewPlaces(point).catch(() => []))
+        );
+        const corridorPlaces = dedupeCandidatePlaces(nearbyGroups.flat(), selectedPlace);
+
+        if (corridorPlaces.length) {
+          const recommendedCorridorPlaces = await recommendKakaoPlacesWithReviewData(
+            corridorPlaces,
+            { userLocation: location, userPreference: user?.preferences },
+            { limit: 14, metricsLimit: 14 }
+          );
+          candidatePlaces = recommendedCorridorPlaces.map(formatRecommendedPlace);
+        } else {
+          candidatePlaces = destinationRecommendedPlaces;
+        }
+      }
+
+      setRouteStatus("지역 만끽 경로를 추천하는 중입니다.");
+
+      let routes = buildLocalRoutes(candidatePlaces, location, hasDestination ? selectedPlace : undefined, user);
+
+      if (!routes.length && hasDestination && candidatePlaces !== destinationRecommendedPlaces) {
+        const fallbackCandidatePlaces = dedupeCandidatePlaces(
+          [...candidatePlaces, ...destinationRecommendedPlaces],
+          selectedPlace
+        );
+        routes = buildLocalRoutes(fallbackCandidatePlaces, location, selectedPlace, user);
+      }
 
       setLocalRoutes(routes);
       if (!routes.length) {
