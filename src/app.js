@@ -61,6 +61,12 @@ async function registerServiceWorker(setAppStatus) {
   if (!("serviceWorker" in navigator)) return;
 
   try {
+    if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+      return;
+    }
+
     await navigator.serviceWorker.register("./sw.js");
   } catch {
     setAppStatus("오프라인 기능을 준비하지 못했습니다.");

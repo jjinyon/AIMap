@@ -1,4 +1,4 @@
-const { useEffect, useRef } = window.React;
+const { useEffect, useRef, useState } = window.React;
 const h = window.React.createElement;
 
 export function MapView({
@@ -11,6 +11,7 @@ export function MapView({
   isTrackingLocation = true,
   onTrackingChange,
   routePlaces = [],
+  showRoutePlaceLine = true,
 }) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
@@ -24,6 +25,7 @@ export function MapView({
   const routePlaceMarkersRef = useRef([]);
   const selectedPlaceRouteRef = useRef(null);
   const dragListenerRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     if (!window.kakao?.maps || !mapEl.current || mapRef.current) return;
@@ -45,11 +47,12 @@ export function MapView({
       onTrackingChange?.(false);
     });
 
+    setMapReady(true);
     setTimeout(() => mapRef.current?.relayout(), 0);
   }, [location.lat, location.lng]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
     const center = toLatLng(location);
     
@@ -76,7 +79,7 @@ export function MapView({
   }, [location, isTrackingLocation]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
     closeInfoWindow();
     clearMarkers(placeMarkersRef.current);
@@ -132,7 +135,7 @@ export function MapView({
   }, [searchResults, selectedPlace, onSelectPlace]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
     if (routeLineRef.current) {
       routeLineRef.current.setMap(null);
@@ -152,11 +155,11 @@ export function MapView({
       strokeStyle: "solid",
     });
 
-    fitLatLngs(path);
-  }, [routePath]);
+    relayoutAndFit(path);
+  }, [mapReady, routePath]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
     if (routePlaceLineRef.current) {
       routePlaceLineRef.current.setMap(null);
@@ -174,17 +177,19 @@ export function MapView({
 
     closeInfoWindow();
     const path = validPlaces.map(toLatLng);
-    routePlaceLineRef.current = new kakao.maps.Polyline({
-      map: mapRef.current,
-      path,
-      strokeWeight: 6,
-      strokeColor: "#16a34a",
-      strokeOpacity: 0.9,
-      strokeStyle: "solid",
-    });
+    if (showRoutePlaceLine && !routePath.length) {
+      routePlaceLineRef.current = new kakao.maps.Polyline({
+        map: mapRef.current,
+        path,
+        strokeWeight: 6,
+        strokeColor: "#16a34a",
+        strokeOpacity: 0.9,
+        strokeStyle: "solid",
+      });
+    }
 
     routePlaceMarkersRef.current = validPlaces.map((place, index) => {
-      const markerKind = index === 0 ? "routeStart" : index === validPlaces.length - 1 ? "routeEnd" : "routeMiddle";
+      const markerKind = `routeStop${(index % 5) + 1}`;
       const marker = createMarker(place, place.name, markerKind);
       const infoWindow = createInfoWindow(
         `<strong>${escapeHtml(`${index + 1}. ${place.name}`)}</strong><br />${escapeHtml(place.category || "장소")}`
@@ -194,18 +199,18 @@ export function MapView({
       return marker;
     });
 
-    fitLatLngs(path);
-  }, [routePlaces]);
+    if (!routePath.length) relayoutAndFit(path);
+  }, [mapReady, routePlaces, routePath.length, showRoutePlaceLine]);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
     if (selectedPlaceRouteRef.current) {
       selectedPlaceRouteRef.current.setMap(null);
       selectedPlaceRouteRef.current = null;
     }
 
-    if (!selectedPlace || routePlaces.length) return;
+    if (!selectedPlace || routePlaces.length || routePath.length) return;
 
     const start = toLatLng(location);
     const end = toLatLng(selectedPlace);
@@ -224,7 +229,7 @@ export function MapView({
     });
 
     fitLatLngs([start, end]);
-  }, [location, selectedPlace, routePlaces.length]);
+  }, [mapReady, location, selectedPlace, routePlaces.length, routePath.length]);
 
   function createMarker(place, title, markerKind = "default") {
     return new kakao.maps.Marker({
@@ -256,6 +261,15 @@ export function MapView({
     const bounds = new kakao.maps.LatLngBounds();
     points.forEach((point) => bounds.extend(point));
     mapRef.current.setBounds(bounds);
+  }
+
+  function relayoutAndFit(points) {
+    mapRef.current?.relayout();
+    fitLatLngs(points);
+    setTimeout(() => {
+      mapRef.current?.relayout();
+      fitLatLngs(points);
+    }, 0);
   }
 
   return h("div", { className: "map-card" }, h("div", { ref: mapEl, className: "map-canvas" }));
@@ -333,6 +347,11 @@ const markerOptions = {
     anchorY: 46,
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48"><path d="M19 47S3 30.8 3 18.5a16 16 0 0 1 32 0C35 30.8 19 47 19 47z" fill="#ef4444" stroke="#fff" stroke-width="3"/><circle cx="19" cy="18.5" r="6.5" fill="#fff"/></svg>`,
   },
+  routeStop1: makeRouteStopMarker("#16a34a", "1"),
+  routeStop2: makeRouteStopMarker("#ef4444", "2"),
+  routeStop3: makeRouteStopMarker("#facc15", "3"),
+  routeStop4: makeRouteStopMarker("#2563eb", "4"),
+  routeStop5: makeRouteStopMarker("#9333ea", "5"),
   routeStart: {
     width: 42,
     height: 50,
@@ -362,3 +381,13 @@ const markerOptions = {
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42"><path d="M17 41S3 26.9 3 16.5a14 14 0 0 1 28 0C31 26.9 17 41 17 41z" fill="#64748b" stroke="#fff" stroke-width="3"/><circle cx="17" cy="16.5" r="5" fill="#fff"/></svg>`,
   },
 };
+
+function makeRouteStopMarker(color, label) {
+  return {
+    width: 40,
+    height: 48,
+    anchorX: 20,
+    anchorY: 46,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 47S4 31.2 4 18.8a16 16 0 1 1 32 0C36 31.2 20 47 20 47z" fill="${color}" stroke="#fff" stroke-width="3"/><circle cx="20" cy="18.8" r="8" fill="#fff"/><text x="20" y="23" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="${color}">${label}</text></svg>`,
+  };
+}

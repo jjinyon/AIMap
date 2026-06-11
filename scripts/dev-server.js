@@ -43,6 +43,11 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/api/directions")) {
+    await handleDirectionsRequest(request, response, requestUrl);
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/tourism/")) {
     await handleTourismRequest(request, response, requestUrl);
     return;
@@ -310,6 +315,239 @@ async function handleGooglePlacesRequest(request, response, requestUrl) {
   } catch (error) {
     sendJson(response, 500, { message: error.message || "Failed to load Google Places data." });
   }
+}
+
+async function handleDirectionsRequest(request, response, requestUrl) {
+  try {
+    if (request.method !== "GET") {
+      sendJson(response, 404, { message: "API not found." });
+      return;
+    }
+
+    const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
+    if (!apiKey) {
+      sendJson(response, 200, { route: null, message: "GOOGLE_ROUTES_API_KEY is not configured." });
+      return;
+    }
+
+    const origin = String(requestUrl.searchParams.get("origin") || "").trim();
+    const destination = String(requestUrl.searchParams.get("destination") || "").trim();
+    const mode = String(requestUrl.searchParams.get("mode") || "walking").trim();
+    const waypointsStr = String(requestUrl.searchParams.get("waypoints") || "").trim();
+    const waypoints = waypointsStr ? waypointsStr.split("|").map(w => w.trim()).filter(Boolean) : [];
+
+    if (!origin || !destination) {
+      sendJson(response, 400, { message: "origin and destination are required." });
+      return;
+    }
+
+    const directions = await fetchRoute({ origin, destination, waypoints, mode }, apiKey);
+    sendJson(response, 200, { route: directions });
+  } catch (error) {
+    sendJson(response, 500, { message: error.message || "Directions lookup failed." });
+  }
+}
+
+async function fetchRoute(options, apiKey) {
+  try {
+    return await fetchGoogleRoutes(options, apiKey);
+  } catch (error) {
+    const fallbackRoute = await fetchOsrmRoute(options);
+    return {
+      ...fallbackRoute,
+      provider: fallbackRoute.provider || "osrm",
+      fallbackReason: error.message || "Google Routes request failed.",
+    };
+  }
+}
+
+async function fetchGoogleRoutes({ origin, destination, waypoints = [], mode = "walking" }, apiKey) {
+  // Parse origin and destination coordinates
+  const [originLat, originLng] = origin.split(",").map(x => parseFloat(x.trim()));
+  const [destLat, destLng] = destination.split(",").map(x => parseFloat(x.trim()));
+  
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng) || !Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+    throw new Error("Invalid origin or destination coordinates.");
+  }
+  
+  const travelMode = mode === "walking" ? "WALK" : "DRIVE";
+  
+  const requestBody = {
+    origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
+    destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
+    travelMode,
+    polylineQuality: "HIGH_QUALITY",
+    languageCode: "ko-KR",
+    regionCode: "KR",
+    units: "METRIC",
+  };
+
+  if (travelMode === "DRIVE") {
+    requestBody.routingPreference = "TRAFFIC_AWARE";
+  }
+  
+  // Add waypoints if provided
+  if (waypoints.length > 0) {
+    const intermediates = waypoints.map(wp => {
+      const [lat, lng] = wp.split(",").map(x => parseFloat(x.trim()));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        throw new Error(`Invalid waypoint coordinates: ${wp}`);
+      }
+      return { location: { latLng: { latitude: lat, longitude: lng } } };
+    });
+    requestBody.intermediates = intermediates;
+  }
+
+  const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  
+  const payload = await response.json().catch(() => ({}));
+  
+  if (!response.ok) {
+    const errorMsg = payload.error?.message || payload.error?.status || "Google Routes request failed.";
+    throw new Error(errorMsg);
+  }
+  
+  const route = payload.routes?.[0];
+  if (!route) {
+    throw new Error("No routes found.");
+  }
+  
+  const totalDistance = Number(route.distanceMeters || 0);
+  const totalDuration = parseDurationSeconds(route.duration);
+  
+  // Decode polyline
+  const encodedPolyline = route.polyline?.encodedPolyline || "";
+  const points = decodePolyline(encodedPolyline);
+  
+  return {
+    distance: totalDistance,
+    duration: totalDuration,
+    points,
+    provider: "google-routes",
+  };
+}
+
+function parseDurationSeconds(duration = "") {
+  const seconds = Number(String(duration).replace(/s$/, ""));
+  return Number.isFinite(seconds) ? seconds : 0;
+}
+
+async function fetchOsrmRoute({ origin, destination, waypoints = [], mode = "walking" }) {
+  const coordinates = [origin, ...waypoints, destination]
+    .map(parseLatLngText)
+    .filter(Boolean)
+    .map(({ lat, lng }) => `${lng},${lat}`)
+    .join(";");
+
+  if (!coordinates) {
+    throw new Error("Invalid route coordinates.");
+  }
+
+  if (mode === "walking") {
+    try {
+      const route = await fetchOsrmProfileRoute("foot", coordinates);
+      return {
+        ...route,
+        duration: getWalkingDurationSeconds(route.distance),
+        provider: "osrm-walking-estimate",
+      };
+    } catch {
+      const route = await fetchOsrmProfileRoute("driving", coordinates);
+      return {
+        ...route,
+        duration: getWalkingDurationSeconds(route.distance),
+        provider: "osrm-driving-walking-estimate",
+      };
+    }
+  }
+
+  return fetchOsrmProfileRoute("driving", coordinates);
+}
+
+async function fetchOsrmProfileRoute(profile, coordinates) {
+  const params = new URLSearchParams({
+    overview: "full",
+    geometries: "geojson",
+    steps: "false",
+  });
+  const response = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${coordinates}?${params.toString()}`);
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.message || "OSRM route request failed.");
+  }
+
+  const route = payload.routes?.[0];
+  if (!route) {
+    throw new Error("No fallback routes found.");
+  }
+
+  return {
+    distance: Number(route.distance || 0),
+    duration: Number(route.duration || 0),
+    points: route.geometry?.coordinates?.map(([lng, lat]) => [lat, lng]) || [],
+    provider: "osrm",
+  };
+}
+
+function getWalkingDurationSeconds(distanceMeters) {
+  const walkingSpeedMetersPerSecond = 1.25;
+  return Math.max(60, Number(distanceMeters || 0) / walkingSpeedMetersPerSecond);
+}
+
+function parseLatLngText(value = "") {
+  const [lat, lng] = String(value).split(",").map((item) => Number(item.trim()));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+// Decode encoded polyline string into array of [lat, lng]
+function decodePolyline(encoded) {
+  if (!encoded) return [];
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+  const coordinates = [];
+
+  while (index < len) {
+    let result = 0;
+    let shift = 0;
+    let byte = null;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const deltaLat = (result & 1) ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
+
+    result = 0;
+    shift = 0;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const deltaLng = (result & 1) ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
+
+    coordinates.push([lat / 1e5, lng / 1e5]);
+  }
+
+  return coordinates;
 }
 
 async function handleTourismRequest(request, response, requestUrl) {

@@ -13,6 +13,8 @@ export function RouteBottomSheet({
   routes = [],
   selectedRoute = null,
   location,
+  destination = null,
+  routePath = [],
   status = "",
   onSelectRoute,
   onClose,
@@ -84,7 +86,7 @@ export function RouteBottomSheet({
       h("div", { className: "route-sheet-handle", "aria-hidden": "true" })
     ),
     isDetail
-      ? h(RouteDetail, { route: selectedRoute, location, onClose, onBackToList })
+      ? h(RouteDetail, { route: selectedRoute, location, destination, routePath, onClose, onBackToList })
       : h(RouteList, { routes, status, onSelectRoute, onClose })
   );
 }
@@ -138,7 +140,7 @@ function RouteList({ routes, status, onSelectRoute, onClose }) {
   );
 }
 
-function RouteDetail({ route, location, onClose, onBackToList }) {
+function RouteDetail({ route, location, destination, routePath = [], onClose, onBackToList }) {
   const places = route?.places || [];
 
   return h(
@@ -150,7 +152,10 @@ function RouteDetail({ route, location, onClose, onBackToList }) {
       h(MapView, {
         location,
         places: [],
+        selectedPlace: destination,
+        routePath,
         routePlaces: places,
+        showRoutePlaceLine: false,
       })
     ),
     h(

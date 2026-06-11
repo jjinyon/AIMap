@@ -95,18 +95,31 @@ const LOCAL_KEYWORDS = [
 
 export function recommendLocalExperienceRoutes(options = {}) {
   const routeOptions = normalizeRouteOptions(options);
+  const relaxedRouteOptions = normalizeRouteOptions({ ...options, minPlaces: 2 });
   const candidatePlaces = prepareCandidatePlaces(routeOptions);
   const routeTemplates = normalizeRouteTemplates(routeOptions.routeTemplates || ROUTE_TEMPLATES, routeOptions);
   const routes = generateRouteCandidates(candidatePlaces, routeTemplates, routeOptions);
-
-  return routes
+  const recommendedRoutes = routes
     .map((route) => buildRecommendedRoute(route, routeOptions))
     .filter((route) => route.totalScore > 0)
-    .sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      return a.estimatedDistanceKm - b.estimatedDistanceKm;
-    })
+    .sort(sortRecommendedRoutes)
     .slice(0, routeOptions.maxRoutes);
+
+  if (recommendedRoutes.length) return recommendedRoutes;
+
+  const flexibleRoutes = generateFlexibleFoodRoutes(candidatePlaces, relaxedRouteOptions)
+    .map((route) => buildRecommendedRoute(route, relaxedRouteOptions))
+    .filter((route) => route.totalScore > 0)
+    .sort(sortRecommendedRoutes)
+    .slice(0, relaxedRouteOptions.maxRoutes);
+
+  if (flexibleRoutes.length) return flexibleRoutes;
+
+  return generateFallbackRouteCandidates(candidatePlaces, relaxedRouteOptions)
+    .map((route) => buildRecommendedRoute(route, relaxedRouteOptions))
+    .filter((route) => route.totalScore > 0)
+    .sort(sortRecommendedRoutes)
+    .slice(0, relaxedRouteOptions.maxRoutes);
 }
 
 export function generateRouteCandidates(candidatePlaces = [], routeTemplates = ROUTE_TEMPLATES, options = {}) {
@@ -393,6 +406,127 @@ function buildCombinations(buckets, maxCombinations) {
   return results;
 }
 
+function generateFlexibleFoodRoutes(candidatePlaces = [], options = {}) {
+  const routeOptions = normalizeRouteOptions({ ...options, minPlaces: 2 });
+  const places = normalizeCandidatePlaces(candidatePlaces)
+    .filter(hasUsableCoordinate)
+    .sort((a, b) => compareFallbackPlaces(a, b, routeOptions));
+  const placesByCategory = groupPlacesByCategory(places, routeOptions.candidatesPerCategory);
+  const foodPlaces = placesByCategory.food || [];
+  if (!foodPlaces.length) return [];
+
+  const routes = foodPlaces
+    .slice(0, routeOptions.maxRoutes * 2)
+    .map((foodPlace, index) => {
+      const selected = [foodPlace];
+      const preferredCategories = getFlexiblePreferredCategories(placesByCategory, index);
+
+      preferredCategories.forEach((category) => {
+        if (selected.length >= routeOptions.maxPlaces) return;
+        const nextPlace = findUnusedPlace(placesByCategory[category] || [], selected);
+        if (nextPlace) selected.push(nextPlace);
+      });
+
+      if (selected.length < routeOptions.minPlaces) {
+        places.forEach((place) => {
+          if (selected.length >= routeOptions.maxPlaces) return;
+          if (!selected.some((item) => item.id === place.id)) selected.push(place);
+        });
+      }
+
+      return selected.length >= routeOptions.minPlaces
+        ? normalizeRouteOrder(selected, routeOptions)
+        : [];
+    })
+    .filter((route) => route.length >= routeOptions.minPlaces);
+
+  return dedupeRoutes(routes).slice(0, routeOptions.maxRoutes);
+}
+
+function getFlexiblePreferredCategories(placesByCategory, offset = 0) {
+  const priorityCategories = ["culture", "park"].filter((category) => placesByCategory[category]?.length);
+  const optionalCategories = ["cafe", "local"].filter((category) => placesByCategory[category]?.length);
+  const categories = [...priorityCategories, ...optionalCategories];
+
+  return categories.slice(offset % Math.max(categories.length, 1)).concat(categories.slice(0, offset % Math.max(categories.length, 1)));
+}
+
+function findUnusedPlace(places = [], selected = []) {
+  return places.find((place) => !selected.some((item) => item.id === place.id));
+}
+
+function generateFallbackRouteCandidates(candidatePlaces = [], options = {}) {
+  const routeOptions = normalizeRouteOptions({ ...options, minPlaces: 2 });
+  const places = normalizeCandidatePlaces(candidatePlaces)
+    .filter(hasUsableCoordinate)
+    .sort((a, b) => compareFallbackPlaces(a, b, routeOptions));
+  const foodPlaces = places.filter((place) => getPlaceCategory(place) === "food");
+  const minPlaces = Math.min(routeOptions.minPlaces, places.length);
+  const routeSize = Math.min(routeOptions.maxPlaces, places.length);
+
+  if (places.length < 2 || minPlaces < 2 || !foodPlaces.length) return [];
+
+  const routes = [];
+  for (let offset = 0; offset < places.length && routes.length < routeOptions.maxRoutes; offset += 1) {
+    const selected = selectDiversePlaces(places.slice(offset).concat(places.slice(0, offset)), routeSize);
+    const route = ensureFoodPlace(selected, foodPlaces, routeSize);
+    if (route.length >= minPlaces && hasFoodCategory(route)) {
+      routes.push(normalizeRouteOrder(route, routeOptions));
+    }
+  }
+
+  return dedupeRoutes(routes);
+}
+
+function compareFallbackPlaces(a, b, options) {
+  if (options.userLocation) {
+    const distanceDiff = getDistanceKm(options.userLocation, a) - getDistanceKm(options.userLocation, b);
+    if (distanceDiff !== 0) return distanceDiff;
+  }
+
+  return getPlaceScore(b) - getPlaceScore(a);
+}
+
+function selectDiversePlaces(places, limit) {
+  const selected = [];
+  const categoryCounts = {};
+
+  places.forEach((place) => {
+    if (selected.length >= limit) return;
+
+    const category = getPlaceCategory(place);
+    const count = categoryCounts[category] || 0;
+    if (count >= 2) return;
+
+    selected.push(place);
+    categoryCounts[category] = count + 1;
+  });
+
+  if (selected.length >= 2) return selected;
+
+  places.forEach((place) => {
+    if (selected.length >= limit) return;
+    if (!selected.some((item) => item.id === place.id)) selected.push(place);
+  });
+
+  return selected;
+}
+
+function ensureFoodPlace(route = [], foodPlaces = [], limit = route.length) {
+  if (hasFoodCategory(route)) return route;
+
+  const foodPlace = foodPlaces.find((place) => !route.some((item) => item.id === place.id));
+  if (!foodPlace) return route;
+
+  if (route.length < limit) return [foodPlace, ...route];
+
+  return [foodPlace, ...route.slice(1)];
+}
+
+function hasFoodCategory(route = []) {
+  return route.some((place) => getPlaceCategory(place) === "food");
+}
+
 function normalizeRouteOrder(route, options) {
   if (!options.userLocation || route.length < 3) return route;
 
@@ -486,6 +620,11 @@ function calculateEstimatedDurationMinutes(route, estimatedDistanceKm, options) 
   const stopMinutes = route.length * routeOptions.stopDurationMinutes;
 
   return Math.max(15, Math.round(movingMinutes + stopMinutes));
+}
+
+function sortRecommendedRoutes(a, b) {
+  if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+  return a.estimatedDistanceKm - b.estimatedDistanceKm;
 }
 
 function buildTravelPoints(route, options) {
