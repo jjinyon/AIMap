@@ -145,6 +145,58 @@ button {
   background: #eee3d4;
 }
 
+.location-required-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 34px 24px;
+  background: #f5efe4;
+  text-align: center;
+}
+
+.location-required-marker {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1f7a5f;
+  box-shadow: 0 10px 22px rgba(55, 45, 31, 0.16);
+}
+
+.location-required-marker svg {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.6;
+}
+
+.location-required-panel h2 {
+  margin: 4px 0 0;
+  color: #202020;
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.location-required-panel p {
+  max-width: 260px;
+  margin: 0;
+  color: #5f665f;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.location-required-panel .primary-action {
+  width: min(100%, 230px);
+  min-height: 46px;
+  margin-top: 6px;
+}
+
 .persistent-ui {
   position: absolute;
   inset: 0;
@@ -2701,6 +2753,39 @@ button {
 
 .preference-signup {
   gap: 10px;
+}
+
+.preference-signup .field-control {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid #eadfce;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(54, 44, 28, 0.06);
+}
+
+.preference-signup .field-control > span {
+  color: #373737;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.preference-signup .field-control input,
+.preference-signup .field-control select {
+  width: 100%;
+  min-height: 34px;
+  color: #1f1f1f;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.preference-signup .field-control input::placeholder {
+  color: #918b82;
+  font-size: 0.78rem;
 }
 
 .preference-section {

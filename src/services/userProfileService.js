@@ -8,7 +8,7 @@ export const preferenceOptions = {
     { value: "park", label: "공원" },
     { value: "culture", label: "문화시설" },
     { value: "shopping", label: "쇼핑" },
-    { value: "photo_spot", label: "사진명소" },
+    { value: "photo_spot", label: "사진 명소" },
   ],
   moods: [
     { value: "quiet", label: "조용함" },

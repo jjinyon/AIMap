@@ -66,7 +66,7 @@ const koreaCityOptions = [
 ];
 
 export function Home({ appStatus }) {
-  const { location } = useCurrentLocation();
+  const { location, status: locationStatus, locate } = useCurrentLocation();
   const [authUser, setAuthUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [screen, setScreen] = useState("auth");
@@ -183,6 +183,8 @@ export function Home({ appStatus }) {
           authUser,
           isAuthLoading,
           location,
+          locationStatus,
+          onRequestLocation: locate,
           onAuthenticated: completeAuth,
           onLogout: logout,
           setScreen: navigateTo,
@@ -207,13 +209,18 @@ export function Home({ appStatus }) {
   );
 }
 
-function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, onAuthenticated, onLogout, setScreen, reviewBackSignal, onReviewBackStateChange }) {
+function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, locationStatus, onRequestLocation, onAuthenticated, onLogout, setScreen, reviewBackSignal, onReviewBackStateChange }) {
   if (isAuthLoading) {
     return h(LoadingScreen);
   }
 
   if (!authUser) {
     return h(AuthScreen, { onAuthenticated });
+  }
+
+  const hasResolvedLocation = Boolean(location?.lat && location?.lng && !location.isFallback);
+  if (!hasResolvedLocation && ["audio", "review", "map"].includes(screen)) {
+    return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser });
   }
 
   if (screen === "audio") {
@@ -240,7 +247,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, on
     });
   }
 
-  return h(MapScreen, { location, appStatus, user: authUser });
+  return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser });
 }
 
 function getScreenTitle(screen) {
@@ -330,7 +337,7 @@ function buildLocalRoutes(candidatePlaces, location, destination, user) {
   });
 }
 
-function MapScreen({ location, appStatus, user }) {
+function MapScreen({ location, locationStatus, onRequestLocation, appStatus, user }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -349,18 +356,21 @@ function MapScreen({ location, appStatus, user }) {
   const [recommendationMode, setRecommendationMode] = useState(true);
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
   const [recommendedPlaces, setRecommendedPlaces] = useState([]);
-  const [mapCenter, setMapCenter] = useState(location?.lat && location?.lng ? location : null);
+  const [mapCenter, setMapCenter] = useState(
+    location?.lat && location?.lng && !location.isFallback ? location : null
+  );
   const [mapBounds, setMapBounds] = useState(null);
   const [isTrackingLocation, setIsTrackingLocation] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [bottomSheetState, setBottomSheetState] = useState("collapsed");
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces());
+  const hasResolvedLocation = Boolean(location?.lat && location?.lng && !location.isFallback);
 
   useEffect(() => {
-    if (!mapCenter && location?.lat && location?.lng) {
+    if (!mapCenter && hasResolvedLocation) {
       setMapCenter({ lat: location.lat, lng: location.lng });
     }
-  }, [location, mapCenter]);
+  }, [hasResolvedLocation, location, mapCenter]);
   const hasDestination = Boolean(selectedPlace);
   const savedPlaceIds = new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id));
   const isDestinationSaved = selectedPlace ? isPlaceSaved(selectedPlace, savedPlaces) : false;
@@ -396,7 +406,7 @@ function MapScreen({ location, appStatus, user }) {
     let ignore = false;
 
     async function loadRecommendedPlaces() {
-      if (!recommendationMode || !mapCenter?.lat || !mapCenter?.lng) {
+      if (!recommendationMode || !hasResolvedLocation || !mapCenter?.lat || !mapCenter?.lng) {
         if (!ignore) setRecommendedPlaces([]);
         return;
       }
@@ -419,7 +429,7 @@ function MapScreen({ location, appStatus, user }) {
     return () => {
       ignore = true;
     };
-  }, [recommendationMode, mapCenter?.lat, mapCenter?.lng, user?.id]);
+  }, [recommendationMode, hasResolvedLocation, mapCenter?.lat, mapCenter?.lng, user?.id]);
 
   useEffect(() => {
     let ignore = false;
@@ -522,7 +532,7 @@ function MapScreen({ location, appStatus, user }) {
   };
 
   const findFastRoute = async () => {
-    if (!selectedPlace) return;
+    if (!selectedPlace || !hasResolvedLocation) return;
 
     setRoutePath([]);
     setRouteSheetOpen(false);
@@ -542,13 +552,35 @@ function MapScreen({ location, appStatus, user }) {
   };
 
   const openRouteMode = () => {
-    if (!selectedPlace) return;
+    if (!selectedPlace || !hasResolvedLocation) return;
 
     setRouteModeActive(true);
     findFastRoute();
   };
 
+  const selectLocalRoute = async (route) => {
+    if (!route || !selectedPlace || !hasResolvedLocation) return;
+
+    setSelectedLocalRoute(route);
+    setRouteSheetOpen(true);
+    setRouteStatus(`${route.title} 경로를 계산하는 중입니다.`);
+
+    try {
+      const calculatedRoute = await findRoute(location, selectedPlace, route.places || []);
+      setRoutePath(calculatedRoute.points);
+      setRouteStatus(calculatedRoute.segmented ? `${route.title} 도보 경로를 표시했습니다.` : route.title);
+    } catch (error) {
+      setRoutePath([]);
+      setRouteStatus(`경로 계산에 실패했습니다: ${error.message}`);
+    }
+  };
+
   const openLocalExperienceRoutes = async () => {
+    if (!hasResolvedLocation) {
+      setRouteStatus("현재 위치를 확인한 뒤 경로를 추천할 수 있습니다.");
+      return;
+    }
+
     setRouteSheetOpen(false);
     setSelectedLocalRoute(null);
     setLocalRoutes([]);
@@ -601,18 +633,7 @@ function MapScreen({ location, appStatus, user }) {
       }
 
       const selectedRoute = routes[0];
-      setSelectedLocalRoute(selectedRoute);
-      setRouteSheetOpen(false);
-      setRouteStatus(`${selectedRoute.title} 경로를 계산하는 중입니다.`);
-
-      try {
-        const calculatedRoute = await findRoute(location, selectedPlace, selectedRoute.places || []);
-        setRoutePath(calculatedRoute.points);
-        setRouteStatus(calculatedRoute.segmented ? `${selectedRoute.title} 도보 경로를 표시했습니다.` : selectedRoute.title);
-      } catch (error) {
-        setRoutePath([]);
-        setRouteStatus(`경로 계산에 실패했습니다: ${error.message}`);
-      }
+      await selectLocalRoute(selectedRoute);
     } catch {
       setLocalRoutes([]);
       setRouteStatus("추천 경로를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -657,6 +678,18 @@ function MapScreen({ location, appStatus, user }) {
       setIsSearching(false);
     }
   };
+
+  if (!hasResolvedLocation) {
+    return h(
+      "div",
+      { className: "screen-layer map-screen" },
+      h(LocationRequiredPanel, {
+        status: locationStatus,
+        onRequestLocation,
+      }),
+      appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
+    );
+  }
 
   return h(
     "div",
@@ -757,7 +790,38 @@ function MapScreen({ location, appStatus, user }) {
         },
       })
     ),
-    appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null
+    appStatus ? h("p", { className: "app-status", role: "status" }, appStatus) : null,
+    routeSheetOpen
+      ? h(RouteBottomSheet, {
+          routes: localRoutes,
+          selectedRoute: selectedLocalRoute,
+          location,
+          destination: selectedPlace,
+          routePath,
+          status: routeStatus,
+          onSelectRoute: selectLocalRoute,
+          onBackToList: () => setSelectedLocalRoute(null),
+          onClose: closeLocalRoutes,
+        })
+      : null
+  );
+}
+
+function LocationRequiredPanel({ status, onRequestLocation }) {
+  const message = status?.message || "현재 위치를 확인하는 중입니다.";
+  const isLoading = status?.tone === "loading";
+
+  return h(
+    "section",
+    { className: "location-required-panel", "aria-label": "현재 위치 확인" },
+    h("div", { className: "location-required-marker", "aria-hidden": "true" }, h(Icon, { name: "target" })),
+    h("h2", null, isLoading ? "현재 위치 확인 중" : "위치 권한이 필요합니다"),
+    h("p", null, message),
+    h(
+      "button",
+      { className: "primary-action", type: "button", onClick: onRequestLocation },
+      isLoading ? "다시 확인하기" : "현재 위치 허용하기"
+    )
   );
 }
 

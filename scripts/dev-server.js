@@ -324,12 +324,6 @@ async function handleDirectionsRequest(request, response, requestUrl) {
       return;
     }
 
-    const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
-    if (!apiKey) {
-      sendJson(response, 200, { route: null, message: "GOOGLE_ROUTES_API_KEY is not configured." });
-      return;
-    }
-
     const origin = String(requestUrl.searchParams.get("origin") || "").trim();
     const destination = String(requestUrl.searchParams.get("destination") || "").trim();
     const mode = String(requestUrl.searchParams.get("mode") || "walking").trim();
@@ -341,6 +335,7 @@ async function handleDirectionsRequest(request, response, requestUrl) {
       return;
     }
 
+    const apiKey = process.env.GOOGLE_ROUTES_API_KEY;
     const directions = await fetchRoute({ origin, destination, waypoints, mode }, apiKey);
     sendJson(response, 200, { route: directions });
   } catch (error) {
@@ -349,6 +344,15 @@ async function handleDirectionsRequest(request, response, requestUrl) {
 }
 
 async function fetchRoute(options, apiKey) {
+  if (!apiKey) {
+    const fallbackRoute = await fetchOsrmRoute(options);
+    return {
+      ...fallbackRoute,
+      provider: fallbackRoute.provider || "osrm",
+      fallbackReason: "GOOGLE_ROUTES_API_KEY is not configured.",
+    };
+  }
+
   try {
     return await fetchGoogleRoutes(options, apiKey);
   } catch (error) {

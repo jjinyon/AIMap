@@ -91,7 +91,7 @@ export function SignupPage({ onSignupComplete, onShowLogin }) {
       onChange: (companion) => setPreferences((current) => ({ ...current, companion })),
     }),
     h(PreferenceSection, {
-      title: "오디오북 관심사",
+      title: "오디오 관심사",
       options: preferenceOptions.audioInterests,
       selectedValues: preferences.audioInterests,
       onToggle: (value) => togglePreference("audioInterests", value),
@@ -119,6 +119,7 @@ function AuthInput({ label, value, placeholder, type = "text", onChange }) {
       value,
       placeholder,
       type,
+      required: true,
       onChange: (event) => onChange(event.target.value),
     })
   );
@@ -133,6 +134,7 @@ function AuthSelect({ label, value, options, onChange }) {
       "select",
       {
         value,
+        required: true,
         onChange: (event) => onChange(event.target.value),
       },
       options.map((option) => h("option", { key: option, value: option }, option))
