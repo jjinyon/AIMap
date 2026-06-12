@@ -8,6 +8,7 @@ export function MapView({
   onSelectPlace,
   searchResults = [],
   routePath = [],
+  routeSegments = [],
   isTrackingLocation = true,
   onTrackingChange,
   routePlaces = [],
@@ -21,6 +22,7 @@ export function MapView({
   const placeMarkersRef = useRef([]);
   const searchMarkersRef = useRef([]);
   const routeLineRef = useRef(null);
+  const routeSegmentLinesRef = useRef([]);
   const routePlaceLineRef = useRef(null);
   const routePlaceMarkersRef = useRef([]);
   const selectedPlaceRouteRef = useRef(null);
@@ -71,6 +73,7 @@ export function MapView({
       position: center,
       title: "현재 위치",
       image: getMarkerImage("current"),
+      zIndex: 10000,
     });
 
     kakao.maps.event.addListener(userMarkerRef.current, "click", () => {
@@ -141,22 +144,39 @@ export function MapView({
       routeLineRef.current.setMap(null);
       routeLineRef.current = null;
     }
+    clearPolylines(routeSegmentLinesRef.current);
+    routeSegmentLinesRef.current = [];
 
     if (!routePath.length) return;
 
     closeInfoWindow();
     const path = routePath.map(([lat, lng]) => new kakao.maps.LatLng(lat, lng));
-    routeLineRef.current = new kakao.maps.Polyline({
-      map: mapRef.current,
-      path,
-      strokeWeight: 6,
-      strokeColor: "#1d4ed8",
-      strokeOpacity: 0.92,
-      strokeStyle: "solid",
-    });
+    const segmentPaths = normalizeRouteSegments(routeSegments);
 
-    relayoutAndFit(path);
-  }, [mapReady, routePath]);
+    if (segmentPaths.length > 1) {
+      routeSegmentLinesRef.current = segmentPaths.map((segment, index) =>
+        new kakao.maps.Polyline({
+          map: mapRef.current,
+          path: segment.map(([lat, lng]) => new kakao.maps.LatLng(lat, lng)),
+          strokeWeight: 7,
+          strokeColor: ROUTE_SEGMENT_COLORS[index % ROUTE_SEGMENT_COLORS.length],
+          strokeOpacity: 0.94,
+          strokeStyle: "solid",
+        })
+      );
+    } else {
+      routeLineRef.current = new kakao.maps.Polyline({
+        map: mapRef.current,
+        path,
+        strokeWeight: 6,
+        strokeColor: "#1d4ed8",
+        strokeOpacity: 0.92,
+        strokeStyle: "solid",
+      });
+    }
+
+    relayoutAndFit([toLatLng(location), ...path]);
+  }, [mapReady, routePath, routeSegments, location]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -199,7 +219,7 @@ export function MapView({
       return marker;
     });
 
-    if (!routePath.length) relayoutAndFit(path);
+    if (!routePath.length) relayoutAndFit([toLatLng(location), ...path]);
   }, [mapReady, routePlaces, routePath.length, showRoutePlaceLine]);
 
   useEffect(() => {
@@ -309,6 +329,16 @@ function clearMarkers(markers) {
   markers.forEach((marker) => marker.setMap(null));
 }
 
+function clearPolylines(polylines) {
+  polylines.forEach((polyline) => polyline.setMap(null));
+}
+
+function normalizeRouteSegments(routeSegments = []) {
+  return routeSegments
+    .map((segment) => (Array.isArray(segment) ? segment : segment.points))
+    .filter((points) => Array.isArray(points) && points.length >= 2);
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -317,6 +347,8 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+const ROUTE_SEGMENT_COLORS = ["#2563eb", "#f97316", "#16a34a", "#9333ea", "#dc2626", "#0891b2"];
 
 const markerOptions = {
   current: {

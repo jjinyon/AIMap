@@ -1,4 +1,5 @@
 import { fetchGoogleReviewMetricsForPlaces } from "./googlePlacesService.js";
+import { getGeneratedLocalReviewStats } from "./localReviewInsightService.js";
 import { fetchLocalReviewStats } from "./reviewService.js";
 
 export async function fetchReviewMetricsForKakaoPlaces(kakaoPlaces, options = {}) {
@@ -15,8 +16,10 @@ export function mergeReviewMetricsByKakaoId(kakaoPlaces, googleMetricsByKakaoId 
     kakaoPlaces.map((place) => {
       const google = googleMetricsByKakaoId[place.id] || {};
       const local = localStatsByPlaceId[place.id] || {};
-      const localReviewCount = Number(local.reviewCount || 0);
+      const generatedLocal = getGeneratedLocalReviewStats(place);
+      const localReviewCount = Number(local.reviewCount || 0) || generatedLocal.localReviewCount;
       const googleReviewCount = Number(google.reviewCount || 0);
+      const localRating = Number(local.rating || 0) || generatedLocal.localRating;
 
       return [
         place.id,
@@ -25,8 +28,10 @@ export function mergeReviewMetricsByKakaoId(kakaoPlaces, googleMetricsByKakaoId 
           googleRating: Number(google.rating || 0),
           googleReviewCount,
           googleReviews: Array.isArray(google.reviews) ? google.reviews : [],
-          localRating: Number(local.rating || 0),
+          localRating,
           localReviewCount,
+          generatedLocalReviews: generatedLocal.generatedLocalReviews,
+          localScore: generatedLocal.localScore,
           reviewCount: googleReviewCount + localReviewCount,
         },
       ];

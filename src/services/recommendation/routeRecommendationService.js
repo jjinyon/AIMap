@@ -639,12 +639,18 @@ function formatRoutePlace(place) {
     lat: Number(place.lat),
     lng: Number(place.lng),
     score: roundScore(getPlaceScore(place)),
+    localReviewCount: Number(place.localReviewCount || 0),
+    localRating: Number(place.localRating || 0),
+    generatedLocalReviews: Array.isArray(place.generatedLocalReviews) ? place.generatedLocalReviews : [],
     reason: createPlaceReason(place),
   };
 }
 
 function createPlaceReason(place) {
   const categoryLabel = CATEGORY_LABELS[getPlaceCategory(place)] || "장소";
+  if (Number(place.localReviewCount || 0) > 0) {
+    return `로컬 리뷰 ${place.localReviewCount}개와 ${categoryLabel} 흐름을 함께 반영한 추천 장소입니다.`;
+  }
   const localText = isLocalPlace(place) ? "지역성이 돋보이고 " : "";
   return `${localText}${categoryLabel} 흐름에 잘 맞는 추천 장소입니다.`;
 }

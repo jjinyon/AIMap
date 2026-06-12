@@ -1,0 +1,153 @@
+export const regionStoryData = [
+  {
+    regionId: "haeundae",
+    regionName: "해운대",
+    storyType: "origin",
+    title: "해운대 지명의 유래",
+    content:
+      "해운대라는 이름은 신라 말 학자 최치원의 호인 해운에서 비롯되었다고 전해집니다. 최치원이 동백섬 일대의 풍경에 머물며 바위에 자신의 호를 새겼다는 이야기가 남아 있고, 이후 이 일대는 해운대라는 이름으로 불리게 되었습니다.",
+    keywords: ["해운대", "최치원", "동백섬", "지명"],
+    coordinates: { lat: 35.1587, lng: 129.1604 },
+    radiusKm: 5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "haeundae",
+    regionName: "해운대",
+    storyType: "history",
+    title: "피서지에서 도시 해변으로",
+    content:
+      "해운대는 오래전부터 온천과 해변으로 알려졌고, 근현대에 들어 부산을 대표하는 피서지로 자리 잡았습니다. 지금은 바다, 고층 건축, 축제, 국제 행사가 함께 겹쳐지는 도시형 해변 문화의 상징처럼 경험됩니다.",
+    keywords: ["해운대", "해변", "온천", "관광", "역사"],
+    coordinates: { lat: 35.1587, lng: 129.1604 },
+    radiusKm: 5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "haeundae",
+    regionName: "해운대",
+    storyType: "culture",
+    title: "해운대의 도시 해변 문화",
+    content:
+      "해운대의 매력은 자연 해변만이 아니라 주변 상권, 산책로, 야간 경관, 계절 축제가 함께 만드는 리듬에 있습니다. 낮에는 바다와 산책이 중심이 되고, 저녁에는 조명과 거리의 활기가 지역의 인상을 바꿉니다.",
+    keywords: ["해운대", "문화", "야경", "축제", "산책"],
+    coordinates: { lat: 35.1587, lng: 129.1604 },
+    radiusKm: 5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "cheongsapo",
+    regionName: "청사포",
+    storyType: "legend",
+    title: "청사포의 푸른 뱀 설화",
+    content:
+      "청사포에는 바다로 나간 남편을 기다리던 아내와 푸른 뱀에 관한 설화가 전해집니다. 기다림과 그리움의 정서가 망부송, 바다, 포구의 풍경과 이어지며 청사포를 단순한 항구가 아니라 이야기가 머무는 장소로 느끼게 합니다.",
+    keywords: ["청사포", "푸른 뱀", "망부송", "설화"],
+    coordinates: { lat: 35.1601, lng: 129.1914 },
+    radiusKm: 3,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "cheongsapo",
+    regionName: "청사포",
+    storyType: "culture",
+    title: "포구와 철길이 만든 청사포의 분위기",
+    content:
+      "청사포는 작은 포구, 등대, 해안 철길, 카페가 가까이 놓인 지역입니다. 바다를 정면으로 보는 풍경과 느린 산책 동선이 강해, 방문자는 명소 하나보다 마을 전체의 속도를 기억하게 됩니다.",
+    keywords: ["청사포", "포구", "등대", "철길", "카페"],
+    coordinates: { lat: 35.1601, lng: 129.1914 },
+    radiusKm: 3,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "gwanghwamun",
+    regionName: "광화문",
+    storyType: "history",
+    title: "광화문 앞에 쌓인 시간",
+    content:
+      "광화문 일대는 조선의 궁궐, 관청가, 근현대의 행정과 집회 문화가 겹쳐진 서울의 중심 공간입니다. 같은 길 위에서 왕조의 도시 구조와 현대 시민 광장의 기억을 함께 읽을 수 있습니다.",
+    keywords: ["광화문", "경복궁", "세종로", "역사"],
+    coordinates: { lat: 37.5726, lng: 126.9768 },
+    radiusKm: 2.5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "jeongdong",
+    regionName: "정동",
+    storyType: "history",
+    title: "정동에 남은 근대의 흔적",
+    content:
+      "정동은 덕수궁, 옛 공사관, 근대 교육과 언론의 흔적이 가까이 모여 있는 지역입니다. 돌담길을 걷다 보면 왕궁의 기억과 개항기 이후 서울의 변화가 한 동선 안에서 이어집니다.",
+    keywords: ["정동", "덕수궁", "돌담길", "근대"],
+    coordinates: { lat: 37.5661, lng: 126.9752 },
+    radiusKm: 2,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "suwon_haenggung",
+    regionName: "수원 행궁동",
+    storyType: "origin",
+    title: "화성행궁이라는 이름의 뜻",
+    content:
+      "행궁은 왕이 궁궐 밖으로 행차했을 때 머물던 임시 궁궐을 뜻합니다. 수원 화성행궁은 정조가 아버지 사도세자의 묘를 참배하러 오가며 머문 곳으로, 행궁동이라는 지역 이름도 이 궁궐의 기억과 맞닿아 있습니다. 그래서 이곳의 이야기는 단순한 관광지가 아니라 왕의 행차, 효심, 새 도시를 만들려던 구상이 겹쳐진 장소에서 시작됩니다.",
+    keywords: ["수원", "행궁동", "화성행궁", "행궁", "팔달구", "정조"],
+    coordinates: { lat: 37.2819, lng: 127.0142 },
+    radiusKm: 3,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "suwon_haenggung",
+    regionName: "수원 행궁동",
+    storyType: "history",
+    title: "정조가 수원에 담은 마음",
+    content:
+      "수원 행궁동의 가장 큰 서사는 정조와 사도세자의 이야기입니다. 정조는 아버지 사도세자의 묘를 수원 화산으로 옮기고, 그 길 위에 화성행궁과 수원화성을 세웠습니다. 이 도시는 효심의 표현이면서 동시에 새로운 정치와 상업, 군사 질서를 실험하려던 조선 후기의 계획도시였습니다. 행궁동을 걷는 일은 정조가 한 도시 안에 남긴 개인적 마음과 국가적 구상을 함께 읽는 일에 가깝습니다.",
+    keywords: ["정조", "사도세자", "화성행궁", "수원화성", "융릉", "건릉"],
+    coordinates: { lat: 37.2819, lng: 127.0142 },
+    radiusKm: 3,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "suwon_haenggung",
+    regionName: "수원 행궁동",
+    storyType: "culture",
+    title: "수원화성은 왜 계획도시였나",
+    content:
+      "수원화성은 성곽 하나만을 뜻하지 않습니다. 성문, 시장, 행궁, 군사 시설, 물길과 길의 흐름이 함께 설계된 조선 후기의 도시 프로젝트였습니다. 축성 과정에는 정약용이 고안한 거중기 같은 실학 기술도 활용되었습니다. 그래서 행궁동에서 성곽을 보면, 돌로 쌓은 방어 시설만이 아니라 새로운 도시를 만들고 운영하려 했던 시대의 상상력을 함께 볼 수 있습니다.",
+    keywords: ["수원화성", "정약용", "거중기", "계획도시", "실학", "팔달문", "장안문"],
+    coordinates: { lat: 37.2819, lng: 127.0142 },
+    radiusKm: 3.5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "suwon_haenggung",
+    regionName: "수원 행궁동",
+    storyType: "legend",
+    title: "방화수류정과 용연의 이름 이야기",
+    content:
+      "행궁동에서 조금 걸어 방화수류정과 용연에 닿으면 이름 자체가 하나의 이야기처럼 느껴집니다. 방화수류정은 꽃을 찾고 버들을 따라간다는 뜻의 아름다운 이름으로 알려져 있고, 용연은 용의 연못이라는 뜻을 품고 있습니다. 이 카드는 검증되지 않은 신비한 사건을 꾸며내기보다, 이름이 풍경을 어떻게 다르게 보이게 만드는지 들려줍니다. 성곽 아래 물가와 정자를 함께 보면 수원화성의 군사적 얼굴과 시적인 얼굴이 동시에 드러납니다.",
+    keywords: ["방화수류정", "용연", "수원천", "화홍문", "수원화성", "설화", "이름"],
+    coordinates: { lat: 37.2874, lng: 127.0176 },
+    radiusKm: 2.5,
+    sourceType: "region_story_db",
+  },
+  {
+    regionId: "kyunghee_global",
+    regionName: "경희대학교 국제캠퍼스",
+    storyType: "culture",
+    title: "캠퍼스가 만드는 생활권",
+    content:
+      "경희대학교 국제캠퍼스 주변은 대학 생활, 주거지, 작은 상권이 맞물린 지역입니다. 관광 명소처럼 강한 단일 서사보다는 학생들의 이동, 식사, 산책 동선이 지역의 분위기를 만듭니다.",
+    keywords: ["경희대학교", "국제캠퍼스", "영통", "대학가"],
+    coordinates: { lat: 37.2414, lng: 127.0811 },
+    radiusKm: 3,
+    sourceType: "region_story_db",
+  },
+];
+
+export const storyTypeToCardType = {
+  origin: "region_origin",
+  legend: "legend",
+  history: "history",
+  culture: "culture",
+};

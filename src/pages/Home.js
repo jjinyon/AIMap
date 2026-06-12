@@ -13,6 +13,7 @@ import { findRoute, formatRouteSummary } from "../services/routingService.js";
 import { recommendKakaoPlacesWithReviewData, recommendLocalExperienceRoutes } from "../services/recommendation/index.js";
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
 import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
+import { cityOptions } from "../services/userProfileService.js";
 import {
   canSpeak,
   isPaused,
@@ -44,26 +45,7 @@ const routeOptions = [
   { id: "personal", label: "퍼스널" },
 ];
 
-const koreaCityOptions = [
-  "서울특별시",
-  "부산광역시",
-  "대구광역시",
-  "인천광역시",
-  "광주광역시",
-  "대전광역시",
-  "울산광역시",
-  "세종특별자치시",
-  "수원시",
-  "성남시",
-  "고양시",
-  "용인시",
-  "청주시",
-  "천안시",
-  "전주시",
-  "포항시",
-  "창원시",
-  "제주시",
-];
+const koreaCityOptions = cityOptions;
 
 export function Home({ appStatus }) {
   const { location, status: locationStatus, locate } = useCurrentLocation();
@@ -275,7 +257,9 @@ function formatRecommendedPlace(place) {
     ratingLabel,
     aiReason:
       place.aiReason ||
-      (place.googleReviewCount
+      (place.localReviewCount
+        ? `로컬 리뷰 ${place.localReviewCount}개 기반 추천`
+        : place.googleReviewCount
         ? `Google ${place.googleReviewCount} reviews + local ${place.localReviewCount || 0}`
         : place.summary || place.address || ""),
   };
@@ -344,6 +328,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
   const [destinationRecommendedPlaces, setDestinationRecommendedPlaces] = useState([]);
   const [destinationRecommendationStatus, setDestinationRecommendationStatus] = useState("");
   const [routePath, setRoutePath] = useState([]);
+  const [routeSegments, setRouteSegments] = useState([]);
   const [routeStatus, setRouteStatus] = useState("");
   const [localRoutes, setLocalRoutes] = useState([]);
   const [selectedLocalRoute, setSelectedLocalRoute] = useState(null);
@@ -488,6 +473,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     closeLocalRoutes();
     setRouteModeActive(false);
     setRoutePath([]);
+    setRouteSegments([]);
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
     setSaveStatus("");
@@ -499,6 +485,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     setDestinationRecommendedPlaces([]);
     setDestinationRecommendationStatus("");
     setRoutePath([]);
+    setRouteSegments([]);
     setRouteStatus("");
     setActiveRouteOption("");
     setRouteModeActive(false);
@@ -535,6 +522,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     if (!selectedPlace || !hasResolvedLocation) return;
 
     setRoutePath([]);
+    setRouteSegments([]);
     setRouteSheetOpen(false);
     setSelectedLocalRoute(null);
     setLocalRoutes([]);
@@ -545,6 +533,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     try {
       const route = await findRoute(location, selectedPlace);
       setRoutePath(route.points);
+      setRouteSegments(route.segments || []);
       setRouteStatus(formatRouteSummary(route));
     } catch {
       setRouteStatus("현재 위치에서 목적지까지의 도보 경로를 찾지 못했습니다.");
@@ -568,9 +557,11 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     try {
       const calculatedRoute = await findRoute(location, selectedPlace, route.places || []);
       setRoutePath(calculatedRoute.points);
+      setRouteSegments(calculatedRoute.segments || []);
       setRouteStatus(calculatedRoute.segmented ? `${route.title} 도보 경로를 표시했습니다.` : route.title);
     } catch (error) {
       setRoutePath([]);
+    setRouteSegments([]);
       setRouteStatus(`경로 계산에 실패했습니다: ${error.message}`);
     }
   };
@@ -587,6 +578,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     setRouteModeActive(true);
     setActiveRouteOption("local");
     setRoutePath([]);
+    setRouteSegments([]);
     setRouteStatus("최단 경로 주변의 추천 장소를 찾는 중입니다.");
 
     try {
@@ -595,6 +587,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       if (hasDestination) {
         const baseRoute = await findRoute(location, selectedPlace);
         setRoutePath(baseRoute.points);
+        setRouteSegments(baseRoute.segments || []);
 
         const samplePoints = sampleRouteCorridor(baseRoute.points);
         const nearbyGroups = await Promise.all(
@@ -649,6 +642,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       setShowSearchResults(false);
       setSelectedPlace(null);
       setRoutePath([]);
+    setRouteSegments([]);
       setActiveRouteOption("");
       return;
     }
@@ -664,6 +658,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       setShowSearchResults(true);
       setSelectedPlace(null);
       setRoutePath([]);
+    setRouteSegments([]);
       setRouteStatus("");
       setActiveRouteOption("");
     } catch {
@@ -673,6 +668,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       setSearchResults([]);
       setSelectedPlace(null);
       setRoutePath([]);
+    setRouteSegments([]);
       setActiveRouteOption("");
     } finally {
       setIsSearching(false);
@@ -703,6 +699,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       onSelectPlace: selectDestination,
       searchResults,
       routePath,
+      routeSegments,
       isTrackingLocation,
       onTrackingChange: () => setIsTrackingLocation(false),
       onMapCenterChange: (center) => {
@@ -738,6 +735,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
 
               setActiveRouteOption(optionId);
               setRoutePath([]);
+    setRouteSegments([]);
               setRouteStatus("이 경로 옵션은 준비 중입니다.");
             },
           })
@@ -798,6 +796,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
           location,
           destination: selectedPlace,
           routePath,
+          routeSegments,
           status: routeStatus,
           onSelectRoute: selectLocalRoute,
           onBackToList: () => setSelectedLocalRoute(null),
@@ -831,7 +830,7 @@ function AudioScreen({ location, user }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(true);
   const [status, setStatus] = useState("");
-  const locationLabel = location?.label || "현재 위치";
+  const locationLabel = location?.label || "\uD604\uC7AC \uC704\uCE58";
   const visibleGenres = audioGenreFilters.filter((genre) =>
     episodes.some((episode) => episode.genre === genre)
   );
@@ -848,7 +847,7 @@ function AudioScreen({ location, user }) {
 
     async function loadLocationEpisodes() {
       setIsLoadingEpisodes(true);
-      setStatus("현재 위치 주변의 설화와 역사 이야기를 찾는 중입니다.");
+      setStatus("\uD604\uC7AC \uC704\uCE58 \uC8FC\uBCC0\uC758 \uC9C0\uC5ED \uC774\uC57C\uAE30\uB97C \uCC3E\uB294 \uC911\uC785\uB2C8\uB2E4.");
 
       try {
         const nearbyEpisodes = window.kakao?.maps?.services
@@ -858,7 +857,7 @@ function AudioScreen({ location, user }) {
                 currentTime: new Date(),
                 userPreference: user?.preferences,
               },
-              { storyLimit: 5, placeLimit: 5 }
+              { storyLimit: 7, placeLimit: 5 }
             )
           : [];
 
@@ -869,7 +868,7 @@ function AudioScreen({ location, user }) {
         setStatus(
           fallbackEpisodes.length
             ? ""
-            : "현재 위치 주변에서 들려줄 설화/역사 에피소드를 찾지 못했습니다."
+            : "\uD604\uC7AC \uC704\uCE58 \uC8FC\uBCC0\uC5D0\uC11C \uB4E4\uB824\uC904 \uC9C0\uC5ED \uC2A4\uD1A0\uB9AC \uCE74\uB4DC\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."
         );
       } finally {
         if (!ignore) setIsLoadingEpisodes(false);
@@ -885,7 +884,7 @@ function AudioScreen({ location, user }) {
 
   const playEpisode = (episode) => {
     if (!canSpeak()) {
-      setStatus("이 브라우저에서는 오디오 낭독을 지원하지 않습니다.");
+      setStatus("\uC774 \uBE0C\uB77C\uC6B0\uC800\uC5D0\uC11C\uB294 \uC624\uB514\uC624 \uB0AD\uB3C5\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
       return;
     }
 
@@ -893,7 +892,7 @@ function AudioScreen({ location, user }) {
       onEnd: () => setIsPlaying(false),
       onError: () => {
         setIsPlaying(false);
-        setStatus("오디오 재생 중 문제가 발생했습니다.");
+        setStatus("\uC624\uB514\uC624 \uC7AC\uC0DD \uC911 \uBB38\uC81C\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.");
       },
     });
 
@@ -930,14 +929,14 @@ function AudioScreen({ location, user }) {
     return h(
       "div",
       { className: "screen-layer audio-screen audio-detail-screen" },
-      h("button", { className: "audio-title-button", type: "button", onClick: closeDetail }, `<${selectedEpisode.title}>`),
+      h("button", { className: "audio-title-button", type: "button", onClick: closeDetail }, "<" + selectedEpisode.title + ">"),
       h(AudioHeroWave),
       h(
         "button",
         {
           className: isPlaying ? "audio-main-control is-playing" : "audio-main-control",
           type: "button",
-          "aria-label": isPlaying ? "오디오 일시정지" : "오디오 재생",
+          "aria-label": isPlaying ? "\uC624\uB514\uC624 \uC77C\uC2DC\uC815\uC9C0" : "\uC624\uB514\uC624 \uC7AC\uC0DD",
           onClick: togglePlay,
         },
         h("span", null)
@@ -945,16 +944,20 @@ function AudioScreen({ location, user }) {
       h(
         "article",
         { className: "audio-story-card" },
+        selectedEpisode.summary ? h("strong", null, selectedEpisode.summary) : null,
         h("p", null, selectedEpisode.script),
-        h(
-          "a",
-          {
-            href: selectedEpisode.sourceUrl,
-            target: "_blank",
-            rel: "noreferrer",
-          },
-          `출처: ${selectedEpisode.sourceName}`
-        )
+        h("small", null, "\uC608\uC0C1 " + (selectedEpisode.durationSeconds || 0) + "\uCD08 \u00B7 " + selectedEpisode.genre),
+        selectedEpisode.sourceUrl
+          ? h(
+              "a",
+              {
+                href: selectedEpisode.sourceUrl,
+                target: "_blank",
+                rel: "noreferrer",
+              },
+              "\uCD9C\uCC98: " + selectedEpisode.sourceName
+            )
+          : h("span", { className: "audio-source-label" }, "\uCD9C\uCC98: " + selectedEpisode.sourceName)
       ),
       status ? h("p", { className: "audio-status", role: "status" }, status) : null
     );
@@ -964,42 +967,42 @@ function AudioScreen({ location, user }) {
     "div",
     { className: "screen-layer audio-screen audio-library-screen" },
     h("p", { className: "audio-location-label" }, locationLabel),
-    h("h1", { className: "audio-section-title" }, "추천 에피소드"),
+    h("h1", { className: "audio-section-title" }, "\uC9C0\uC5ED \uC2A4\uD1A0\uB9AC \uCE74\uB4DC"),
     h(
       "section",
-      { className: "episode-card-grid", "aria-label": "추천 에피소드" },
+      { className: "episode-card-grid", "aria-label": "\uC9C0\uC5ED \uC2A4\uD1A0\uB9AC \uCE74\uB4DC" },
       isLoadingEpisodes
-        ? h("p", { className: "audio-empty-state" }, "주변 이야기를 찾는 중")
+        ? h("p", { className: "audio-empty-state" }, "\uC8FC\uBCC0 \uC774\uC57C\uAE30\uB97C \uCC3E\uB294 \uC911")
         : episodes.length
           ? episodes.map((episode) =>
               h(
                 "button",
                 {
                   key: episode.id,
-                  className: `episode-card ${episode.tone}`,
+                  className: "episode-card " + episode.tone,
                   type: "button",
                   onClick: () => playEpisode(episode),
                 },
                 [
                   ...episode.shortTitle.split("\n").map((line) => h("span", { key: line }, line)),
-                  h("small", { key: "distance" }, `${episode.distanceKm}km`),
+                  h("small", { key: "meta" }, episode.genre + " \u00B7 " + (episode.durationSeconds || 0) + "\uCD08"),
                 ]
               )
             )
-          : h("p", { className: "audio-empty-state" }, "주변 에피소드 없음")
+          : h("p", { className: "audio-empty-state" }, "\uC8FC\uBCC0 \uC2A4\uD1A0\uB9AC \uCE74\uB4DC \uC5C6\uC74C")
     ),
-    h("h2", { className: "audio-genre-title" }, "장르별"),
+    h("h2", { className: "audio-genre-title" }, "\uCE74\uB4DC \uC885\uB958"),
     h(
       "section",
-      { className: "audio-genre-grid", "aria-label": "장르별 이야기" },
+      { className: "audio-genre-grid", "aria-label": "\uCE74\uB4DC \uC885\uB958" },
       (visibleGenres.length ? visibleGenres : audioGenreFilters).map((genre) =>
-        h("button", { key: genre, className: `audio-genre-chip ${genre}`, type: "button" }, genre)
+        h("button", { key: genre, className: "audio-genre-chip " + genre, type: "button" }, genre)
       )
     ),
     firstEpisode
       ? h(
           "section",
-          { className: "audio-mini-player", "aria-label": "현재 오디오" },
+          { className: "audio-mini-player", "aria-label": "\uD604\uC7AC \uC624\uB514\uC624" },
           h(AudioMiniIcon),
           h("strong", null, firstEpisode.title),
           h(
@@ -1007,12 +1010,12 @@ function AudioScreen({ location, user }) {
             {
               className: "mini-play-button",
               type: "button",
-              "aria-label": `${firstEpisode.title} 재생`,
+              "aria-label": firstEpisode.title + " \uC7AC\uC0DD",
               onClick: () => playEpisode(firstEpisode),
             },
             h("span", null)
           ),
-          h("button", { className: "mini-pause-button", type: "button", "aria-label": "일시정지", onClick: stopAudio }, [
+          h("button", { className: "mini-pause-button", type: "button", "aria-label": "\uC77C\uC2DC\uC815\uC9C0", onClick: stopAudio }, [
             h("span", { key: "1" }),
             h("span", { key: "2" }),
           ])
@@ -1207,6 +1210,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     const { review } = await createPlaceReview({
       placeId: selectedPlace.id,
       placeName: selectedPlace.name,
+      placeAddress: selectedPlace.address || "",
       rating,
       content,
     });
@@ -1376,8 +1380,9 @@ function WrittenReview({ review }) {
       "div",
       { className: "written-review-meta" },
       h("strong", null, review.userNickname),
-      h("span", null, review.userCity ? `${review.userCity} · ${dateLabel}` : dateLabel),
-      h("b", null, `★ ${review.rating}`)
+      h("span", null, review.userCity ? `${review.userCity} ? ${dateLabel}` : dateLabel),
+      review.isLocalResident ? h("em", { className: "local-resident-badge" }, "\uC9C0\uC5ED \uC8FC\uBBFC \uB9AC\uBDF0") : null,
+      h("b", null, `? ${review.rating}`)
     ),
     h("p", null, review.content)
   );

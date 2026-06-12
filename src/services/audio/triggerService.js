@@ -1,18 +1,24 @@
 import { fetchNearbyReviewPlaces } from "../geocodingService.js";
 import { recommendKakaoPlacesWithReviewData } from "../recommendation/index.js";
-import { getAudioStoriesForPlaces } from "./audioGuideService.js";
+import { getAudioEpisodesFromStoryCards } from "./audioBookService.js";
 
 export async function loadCurrentPlaceAudioStories(location, context = {}, options = {}) {
   if (!location?.lat || !location?.lng) return [];
 
   const kakaoPlaces = await fetchNearbyReviewPlaces(location).catch(() => []);
+  const enrichedLocation = enrichLocationWithNearbyPlaces(location, kakaoPlaces);
+  const regionHints = makeRegionHints(enrichedLocation, kakaoPlaces);
+
   if (!kakaoPlaces.length) {
-    return getAudioStoriesForPlaces([makeCurrentLocationPlace(location)], { ...context, location }, { limit: 1 });
+    return getAudioEpisodesFromStoryCards({
+      location: enrichedLocation,
+      context: { ...context, location: enrichedLocation, regionHints },
+    });
   }
 
   const recommendedPlaces = await recommendKakaoPlacesWithReviewData(
     kakaoPlaces,
-    { ...context, userLocation: location },
+    { ...context, userLocation: enrichedLocation },
     {
       limit: options.placeLimit || 5,
       metricsLimit: options.metricsLimit || 8,
@@ -20,8 +26,38 @@ export async function loadCurrentPlaceAudioStories(location, context = {}, optio
     }
   ).catch(() => kakaoPlaces.slice(0, options.placeLimit || 5));
 
-  const storyPlaces = buildStoryPlaces(location, recommendedPlaces.length ? recommendedPlaces : kakaoPlaces);
-  return getAudioStoriesForPlaces(storyPlaces, { ...context, location }, { limit: options.storyLimit || 5 });
+  const storyPlaces = buildStoryPlaces(enrichedLocation, recommendedPlaces.length ? recommendedPlaces : kakaoPlaces);
+  const selectedPlace = storyPlaces.find((place) => place?.name) || null;
+
+  return getAudioEpisodesFromStoryCards({
+    location: enrichedLocation,
+    place: selectedPlace,
+    context: { ...context, location: enrichedLocation, place: selectedPlace, regionHints },
+  });
+}
+
+function enrichLocationWithNearbyPlaces(location = {}, places = []) {
+  const nearestPlaceWithAddress = places
+    .filter((place) => place?.address)
+    .sort((a, b) => Number(a.distance || 0) - Number(b.distance || 0))[0];
+
+  if (!nearestPlaceWithAddress) return location;
+
+  return {
+    ...location,
+    address: location.address || nearestPlaceWithAddress.address,
+    regionName: location.regionName || makeAreaTitle(nearestPlaceWithAddress.address),
+  };
+}
+
+function makeRegionHints(location = {}, places = []) {
+  const hints = [location.label, location.address, location.regionName];
+
+  places.slice(0, 8).forEach((place) => {
+    hints.push(place.name, place.address, place.categoryName, place.categoryPath, place.type);
+  });
+
+  return hints.filter(Boolean);
 }
 
 function buildStoryPlaces(location, places = []) {
@@ -33,7 +69,7 @@ function buildStoryPlaces(location, places = []) {
     .filter((place) => place?.name)
     .sort((a, b) => Number(a.distance || 0) - Number(b.distance || 0))[0];
 
-  return dedupePlaces([knownArea, ...localPlaces, nearestPlace, makeCurrentLocationPlace(location)].filter(Boolean));
+  return dedupePlaces([nearestPlace, ...localPlaces, knownArea, makeCurrentLocationPlace(location)].filter(Boolean));
 }
 
 function makeCurrentLocationPlace(location) {
@@ -59,7 +95,7 @@ function isStoryWorthyPlace(place = {}) {
   const category = `${place.category || ""} ${place.categoryName || ""} ${place.categoryPath || ""} ${place.type || ""}`;
   const name = String(place.name || "");
 
-  if (/대학교|대학|캠퍼스|공원|호수|미술관|박물관|도서관|문화|광장|시장|역사|전망|산책|관광/.test(`${name} ${category}`)) {
+  if (/대학|캠퍼스|공원|해수욕장|미술관|박물관|도서관|문화|광장|시장|역사|전망|산책|관광|궁|성|문|정|루|연|사|절|향교|서원|고택|유적/.test(`${name} ${category}`)) {
     return true;
   }
 
@@ -105,11 +141,11 @@ function makeAreaTitle(address = "") {
   const tokens = String(address)
     .split(/\s+/)
     .filter(Boolean);
-  const neighborhood = [...tokens].reverse().find((token) => /동$|읍$|면$|가$|로$|길$/.test(token));
-  const district = [...tokens].reverse().find((token) => /구$|시$|군$/.test(token));
+  const neighborhood = [...tokens].reverse().find((token) => /동$|읍$|면$|리$|가$/.test(token));
+  const district = [...tokens].reverse().find((token) => /구$|군$|시$/.test(token));
   const area = neighborhood || district;
 
-  return area ? `${area} 주변 이야기` : "내 주변 이야기";
+  return area ? `${area} 주변 이야기` : "현재 위치 주변 이야기";
 }
 
 function getDistanceKm(a, b) {

@@ -145,6 +145,47 @@ button {
   background: #eee3d4;
 }
 
+.audio-genre-chip.지명 {
+  background: #ffe199;
+}
+
+.audio-genre-chip.역사 {
+  background: #ffb4bc;
+}
+
+.audio-genre-chip.설화 {
+  background: #cff5c6;
+}
+
+.audio-genre-chip.문화,
+.audio-genre-chip.장소,
+.audio-genre-chip.리뷰,
+.audio-genre-chip.팁 {
+  background: #cdddff;
+}
+
+.audio-story-card strong,
+.audio-story-card small,
+.audio-source-label {
+  display: block;
+  margin: 0 0 8px;
+  color: #202020;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.audio-story-card small {
+  color: #666666;
+  font-size: 0.52rem;
+}
+
+.audio-source-label {
+  color: #030082;
+  font-size: 0.52rem;
+  text-decoration: none;
+}
+
 .location-required-panel {
   position: absolute;
   inset: 0;
@@ -2584,7 +2625,7 @@ button {
 
 .written-review-meta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 6px;
 }
@@ -2612,6 +2653,20 @@ button {
 
 .written-review-meta b {
   color: #f0ad30;
+}
+
+.written-review-meta .local-resident-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e7f7ed;
+  color: #16834d;
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 950;
+  white-space: nowrap;
 }
 
 .written-review p {

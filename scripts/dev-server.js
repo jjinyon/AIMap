@@ -239,6 +239,7 @@ async function handleReviewRequest(request, response, requestUrl) {
       const db = readDb();
       const placeId = String(body.placeId || "").trim();
       const placeName = String(body.placeName || "").trim();
+      const placeAddress = String(body.placeAddress || "").trim();
       const content = String(body.content || "").trim();
       const rating = Number(body.rating || 0);
 
@@ -251,11 +252,14 @@ async function handleReviewRequest(request, response, requestUrl) {
         id: crypto.randomUUID(),
         placeId,
         placeName,
+        placeAddress,
         rating,
         content: content.slice(0, 500),
         userId: user.id,
         userNickname: user.nickname,
         userCity: user.city || "",
+        userNeighborhood: user.city || "",
+        isLocalResident: isAdjacentNeighborhood(user.city || "", placeAddress),
         createdAt: new Date().toISOString(),
       };
 
@@ -979,12 +983,26 @@ function toPublicReview(review) {
     id: review.id,
     placeId: review.placeId,
     placeName: review.placeName,
+    placeAddress: review.placeAddress || "",
     rating: review.rating,
     content: review.content,
     userNickname: review.userNickname,
     userCity: review.userCity || "",
+    userNeighborhood: review.userNeighborhood || review.userCity || "",
+    isLocalResident: Boolean(review.isLocalResident),
     createdAt: review.createdAt,
   };
+}
+
+function isAdjacentNeighborhood(userNeighborhood = "", placeAddress = "") {
+  const userDong = extractNeighborhood(userNeighborhood);
+  const placeDong = extractNeighborhood(placeAddress);
+  return Boolean(userDong && placeDong && userDong === placeDong);
+}
+
+function extractNeighborhood(value = "") {
+  const tokens = String(value).split(/\s+/).filter(Boolean);
+  return [...tokens].reverse().find((token) => /동$|읍$|면$|리$|가$/.test(token)) || String(value).trim();
 }
 
 function normalizeEmail(email) {

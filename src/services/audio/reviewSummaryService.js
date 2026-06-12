@@ -1,11 +1,12 @@
 import { fetchGoogleReviewMetricsForPlaces } from "../googlePlacesService.js";
+import { generateLocalReviewsForPlace } from "../localReviewInsightService.js";
 import { fetchPlaceReviews } from "../reviewService.js";
 
 const KEYWORD_RULES = [
-  { keyword: "야경", patterns: [/야경/, /뷰/, /전망/, /night/i, /view/i] },
-  { keyword: "산책", patterns: [/산책/, /걷기/, /walk/i] },
+  { keyword: "전망", patterns: [/전망/, /뷰/, /바다/, /야경/, /view/i, /night/i] },
+  { keyword: "산책", patterns: [/산책/, /걷기/, /길/, /walk/i] },
   { keyword: "분위기", patterns: [/분위기/, /감성/, /조용/, /cozy/i, /atmosphere/i] },
-  { keyword: "맛집", patterns: [/맛/, /메뉴/, /음식/, /delicious/i, /food/i] },
+  { keyword: "맛", patterns: [/맛/, /메뉴/, /음식/, /delicious/i, /food/i] },
   { keyword: "사진", patterns: [/사진/, /포토/, /인생샷/, /photo/i] },
   { keyword: "친절", patterns: [/친절/, /서비스/, /kind/i, /service/i] },
 ];
@@ -28,17 +29,20 @@ export async function loadReviews(place = {}, options = {}) {
   ]);
   const googleReviews = Object.values(googleMetrics)[0]?.reviews || [];
   const localReviews = localPayload.reviews || [];
+  const generatedLocalReviews = generateLocalReviewsForPlace(place);
 
-  return [...googleReviews.map(normalizeGoogleReview), ...localReviews.map(normalizeLocalReview)].filter(
-    (review) => review.text
-  );
+  return [
+    ...googleReviews.map(normalizeGoogleReview),
+    ...localReviews.map(normalizeLocalReview),
+    ...generatedLocalReviews.map(normalizeGeneratedReview),
+  ].filter((review) => review.text);
 }
 
 export function summarizeReviews(reviews = [], place = {}) {
   if (!reviews.length) {
     return {
       source: "review-summary",
-      sourceName: "Google 리뷰",
+      sourceName: "방문자 리뷰",
       sourceUrl: place.url || "",
       title: place.name || "현재 장소",
       script: "",
@@ -51,13 +55,14 @@ export function summarizeReviews(reviews = [], place = {}) {
   const keywords = extractPositiveKeywords(reviews);
   const mainKeyword = keywords[0] || inferKeywordFromPlace(place);
   const vibe = makeLocalVibeSentence(place, mainKeyword, reviews);
+  const keywordText = keywords.slice(0, 3).join(", ") || mainKeyword;
 
   return {
     source: "review-summary",
-    sourceName: "Google 리뷰",
+    sourceName: "방문자 리뷰",
     sourceUrl: place.url || "",
     title: place.name || "현재 장소",
-    script: `${vibe} 방문자 리뷰를 보면 ${keywords.slice(0, 3).join(", ") || "분위기"}에 대한 언급이 많습니다. 잠시 머물며 이 장소의 일상적인 표정을 느껴보세요.`,
+    script: `${vibe} 리뷰에서는 ${keywordText}에 대한 언급이 자주 보입니다. 이 요약은 방문자들이 남긴 표현을 묶은 것이므로, 역사 정보가 아니라 실제 이용 경험에 가까운 카드로 참고하면 좋습니다.`,
     keywords,
     vibe,
     reviewCount: reviews.length,
@@ -78,17 +83,18 @@ export function makeLocalVibeSentence(place = {}, keyword = "", reviews = []) {
   const category = place.categoryName || place.type || place.category || "장소";
   const countPhrase = reviews.length >= 3 ? "여러 방문자들이" : "방문자들이";
 
-  if (keyword === "야경") return `${name}은 현지인들이 야경 맛집으로 자주 추천하는 ${category}입니다.`;
-  if (keyword === "산책") return `${name}은 ${countPhrase} 가볍게 걷기 좋다고 말하는 ${category}입니다.`;
-  if (keyword === "맛집") return `${name}은 ${countPhrase} 맛과 만족감을 함께 이야기하는 ${category}입니다.`;
-  if (keyword === "사진") return `${name}은 사진으로 남기기 좋은 순간이 많은 ${category}입니다.`;
+  if (keyword === "전망") return `${name}은 ${countPhrase} 전망이 좋다고 말하는 ${category}입니다.`;
+  if (keyword === "산책") return `${name}은 ${countPhrase} 가볍게 걷기 좋다고 언급한 ${category}입니다.`;
+  if (keyword === "맛") return `${name}은 ${countPhrase} 맛과 메뉴 만족도를 이야기한 ${category}입니다.`;
+  if (keyword === "사진") return `${name}은 사진으로 남기기 좋은 지점이 자주 언급되는 ${category}입니다.`;
+  if (keyword === "친절") return `${name}은 친절한 응대가 리뷰에서 반복되는 ${category}입니다.`;
 
   return `${name}은 ${countPhrase} 분위기가 좋다고 남긴 ${category}입니다.`;
 }
 
 function inferKeywordFromPlace(place = {}) {
   const category = `${place.categoryName || ""} ${place.categoryPath || ""} ${place.type || ""}`;
-  if (/음식|식당|카페|술집/.test(category)) return "맛집";
+  if (/음식|식당|카페|술집/.test(category)) return "맛";
   if (/관광|공원|해변|전망/.test(category)) return "산책";
   if (/문화|전시|공연/.test(category)) return "분위기";
   return "분위기";
@@ -107,5 +113,13 @@ function normalizeLocalReview(review = {}) {
     rating: Number(review.rating || 0),
     text: review.content || review.text || "",
     authorName: review.userNickname || "",
+  };
+}
+
+function normalizeGeneratedReview(review = {}) {
+  return {
+    rating: Number(review.rating || 0),
+    text: review.text || "",
+    authorName: review.authorName || "로컬 방문자",
   };
 }

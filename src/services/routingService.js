@@ -46,6 +46,7 @@ async function requestRoute(start, destination, waypoints = []) {
     distance: route.distance,
     duration: route.duration || getWalkingDurationSeconds(route.distance),
     points,
+    segments: [{ from: start, to: destination, points }],
   };
 }
 
@@ -54,6 +55,7 @@ async function findSegmentedRoute(start, destination, waypoints = []) {
   if (stops.length < 2) throw new Error("Route coordinates are invalid.");
 
   const points = [];
+  const segments = [];
   let distance = 0;
   let duration = 0;
 
@@ -63,6 +65,7 @@ async function findSegmentedRoute(start, destination, waypoints = []) {
 
     const segment = await requestRoute(from, to);
     appendSegmentPoints(points, segment.points);
+    segments.push({ from, to, points: segment.points });
     distance += Number(segment.distance || 0);
     duration += Number(segment.duration || 0);
   }
@@ -73,6 +76,7 @@ async function findSegmentedRoute(start, destination, waypoints = []) {
     distance,
     duration,
     points,
+    segments,
     segmented: true,
   };
 }

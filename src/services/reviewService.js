@@ -5,10 +5,10 @@ export async function fetchPlaceReviews(placeId) {
   });
 }
 
-export async function createPlaceReview({ placeId, placeName, rating, content }) {
+export async function createPlaceReview({ placeId, placeName, placeAddress = "", rating, content }) {
   return requestReview("/api/reviews", {
     method: "POST",
-    body: JSON.stringify({ placeId, placeName, rating, content }),
+    body: JSON.stringify({ placeId, placeName, placeAddress, rating, content }),
   });
 }
 

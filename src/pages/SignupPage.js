@@ -1,5 +1,5 @@
 import { registerUser } from "../services/authService.js";
-import { cityOptions, preferenceOptions } from "../services/userProfileService.js";
+import { preferenceOptions, provinceOptions } from "../services/userProfileService.js";
 
 const { useState } = window.React;
 const h = window.React.createElement;
@@ -14,7 +14,9 @@ const emptyPreferences = {
 export function SignupPage({ onSignupComplete, onShowLogin }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [city, setCity] = useState(cityOptions[0]);
+  const [province, setProvince] = useState(provinceOptions[0]);
+  const [district, setDistrict] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
   const [password, setPassword] = useState("");
   const [preferences, setPreferences] = useState(emptyPreferences);
   const [status, setStatus] = useState("");
@@ -34,6 +36,7 @@ export function SignupPage({ onSignupComplete, onShowLogin }) {
     setIsSubmitting(true);
 
     try {
+      const city = makeNeighborhoodAddress(province, district, neighborhood);
       const payload = await registerUser({ name, email, city, password, preferences });
       onSignupComplete?.(payload.user);
     } catch (error) {
@@ -61,10 +64,22 @@ export function SignupPage({ onSignupComplete, onShowLogin }) {
       onChange: setEmail,
     }),
     h(AuthSelect, {
-      label: "지역",
-      value: city,
-      options: cityOptions,
-      onChange: setCity,
+      label: "시/도",
+      value: province,
+      options: provinceOptions,
+      onChange: setProvince,
+    }),
+    h(AuthInput, {
+      label: "시/군/구",
+      value: district,
+      placeholder: "예: 수원시 팔달구",
+      onChange: setDistrict,
+    }),
+    h(AuthInput, {
+      label: "읍/면/동",
+      value: neighborhood,
+      placeholder: "예: 행궁동",
+      onChange: setNeighborhood,
     }),
     h(AuthInput, {
       label: "비밀번호",
@@ -197,4 +212,11 @@ function CompanionSection({ value, options, onChange }) {
       )
     )
   );
+}
+
+function makeNeighborhoodAddress(province = "", district = "", neighborhood = "") {
+  return [province, district, neighborhood]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
 }
