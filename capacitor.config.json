@@ -3,6 +3,8 @@
   "appName": "AI 장소 추천",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http",
+    "url": "http://10.0.2.2:5173",
+    "cleartext": true
   }
 }
