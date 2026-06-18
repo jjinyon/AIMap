@@ -1202,8 +1202,11 @@ function LegacyAudioScreen() {
 function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("recommended");
-  const [activeFilter, setActiveFilter] = useState(reviewMockData.filters[1]);
   const [nearbyPlaces, setNearbyPlaces] = useState([]);
+  const [searchResultPlaces, setSearchResultPlaces] = useState([]);
+  const [searchStatus, setSearchStatus] = useState("");
+  const [isSearchingReviews, setIsSearchingReviews] = useState(false);
+  const [searchModeLabel, setSearchModeLabel] = useState("");
   const [nearbyStatus, setNearbyStatus] = useState("현재 위치 주변 장소를 찾고 있습니다.");
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [reviewsByPlace, setReviewsByPlace] = useState({});
@@ -1247,7 +1250,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const showResults = view === "results";
   const showHistory = view === "history";
   const visiblePlaces = showResults
-    ? reviewMockData.reviewPlaces.filter((place) => place.tags.includes(activeFilter))
+    ? searchResultPlaces
     : nearbyPlaces.length
       ? nearbyPlaces
       : reviewMockData.recommendedPlaces;
@@ -1308,16 +1311,48 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     };
   }, [selectedPlaceId]);
 
+  const runReviewSearch = async (keyword) => {
+    const trimmedKeyword = keyword.trim();
+
+    if (!trimmedKeyword) {
+      setView("history");
+      setSearchResultPlaces([]);
+      setSearchStatus("");
+      setSearchModeLabel("");
+      setSelectedPlaceId(null);
+      return;
+    }
+
+    setIsSearchingReviews(true);
+    setSearchStatus("리뷰를 볼 장소를 검색하는 중입니다.");
+    setSearchModeLabel("");
+    setView("results");
+    setSelectedPlaceId(null);
+
+    try {
+      const outcome = await resolveReviewSearch(trimmedKeyword, location, user);
+      setSearchResultPlaces(outcome.places);
+      setSearchStatus(outcome.message);
+      setSearchModeLabel(outcome.modeLabel);
+      setSelectedPlaceId(outcome.autoSelectId || null);
+    } catch {
+      setSearchResultPlaces([]);
+      setSearchStatus("검색 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setSearchModeLabel("");
+      setSelectedPlaceId(null);
+    } finally {
+      setIsSearchingReviews(false);
+    }
+  };
+
   const submitSearch = (event) => {
     event.preventDefault();
-    setView(query.trim() ? "results" : "history");
-    setSelectedPlaceId(null);
+    runReviewSearch(query);
   };
 
   const selectHistory = (historyItem) => {
     setQuery(historyItem.keyword);
-    setView("results");
-    setSelectedPlaceId(null);
+    runReviewSearch(historyItem.keyword);
   };
 
   const submitPlaceReview = async ({ rating, content }) => {
@@ -1348,12 +1383,13 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
         placeholder: "장소, 가게명 검색",
         type: "search",
         value: query,
+        disabled: isSearchingReviews,
         onFocus: () => {
           if (!query.trim() && view === "recommended") setView("history");
         },
         onChange: (event) => setQuery(event.target.value),
       }),
-      h("button", { type: "submit", "aria-label": "검색" }, h(Icon, { name: "search" }))
+      h("button", { type: "submit", "aria-label": "검색", disabled: isSearchingReviews }, h(Icon, { name: "search" }))
     ),
     h(
       "div",
@@ -1362,13 +1398,13 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
         ? h(ReviewHistoryList, { history: reviewMockData.searchHistory, onSelect: selectHistory })
         : [
             showResults
-              ? h(ReviewFilterBar, {
-                  key: "filters",
-                  filters: reviewMockData.filters,
-                  activeFilter,
-                  onSelect: setActiveFilter,
-                })
+              ? searchModeLabel
+                ? h("p", { key: "mode", className: "review-status", role: "status" }, searchModeLabel)
+                : null
               : h("h1", { key: "title", className: "review-section-title" }, "현재 위치에서 인기 있는 장소"),
+            showResults && searchStatus
+              ? h("p", { key: "search-status", className: "review-status", role: "status" }, searchStatus)
+              : null,
             !showResults && nearbyStatus
               ? h("p", { key: "status", className: "review-status", role: "status" }, nearbyStatus)
               : null,
@@ -1402,6 +1438,157 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
         })
       : null
   );
+}
+
+async function resolveReviewSearch(query, location, user) {
+  const rawResults = await searchPlaces(query, location);
+
+  if (!rawResults.length) {
+    return {
+      places: [],
+      autoSelectId: "",
+      modeLabel: "검색 결과",
+      message: `"${query}" 검색 결과가 없습니다.`,
+    };
+  }
+
+  const anchorPlace = findAnchorPlace(query, rawResults) || rawResults[0];
+  const directPlace = isLocationOnlyQuery(query, rawResults) ? null : findDirectBusinessMatch(query, rawResults);
+  if (directPlace) {
+    const recommended = await recommendKakaoPlacesWithReviewData(
+      [directPlace],
+      { userLocation: location, userPreference: user?.preferences },
+      { limit: 1, metricsLimit: 1 }
+    );
+    const places = (recommended.length ? recommended : [directPlace]).map(formatReviewSearchPlace);
+    const firstPlace = places[0];
+
+    return {
+      places,
+      autoSelectId: firstPlace?.id || "",
+      modeLabel: `가게 검색: ${firstPlace?.name || directPlace.name}`,
+      message: firstPlace ? "해당 가게의 리뷰를 바로 열었습니다." : "가게 리뷰를 찾지 못했습니다.",
+    };
+  }
+
+  const nearbyPlaces = await fetchNearbyReviewPlaces(anchorPlace, {
+    radius: 1000,
+    limit: 200,
+    pageCount: 3,
+    size: 15,
+  });
+  const nearbyBusinesses = nearbyPlaces.filter((place) => !isSamePlace(place, anchorPlace));
+  const recommended = await recommendKakaoPlacesWithReviewData(
+    nearbyBusinesses,
+    { userLocation: anchorPlace, userPreference: user?.preferences },
+    {
+      limit: nearbyBusinesses.length,
+      metricsLimit: Math.min(nearbyBusinesses.length, 60),
+      normalizationLimits: { maxDistanceKm: 1 },
+      weights: { distance: 1.1, preference: 1.8 },
+    }
+  );
+  const places = recommended.map(formatReviewSearchPlace);
+
+  return {
+    places,
+    autoSelectId: "",
+    modeLabel: `장소 검색: ${anchorPlace.name} 주변 가게`,
+    message: places.length
+      ? `${anchorPlace.name} 주변에서 리뷰를 볼 수 있는 가게 ${places.length}곳을 찾았습니다.`
+      : `${anchorPlace.name} 주변에서 보여줄 가게를 찾지 못했습니다.`,
+  };
+}
+
+function isLocationOnlyQuery(query, results) {
+  const normalizedQuery = normalizeSearchToken(query);
+  const hasExactAnchor = results.some(
+    (place) => isAnchorSearchPlace(place) && normalizeSearchToken(place.name) === normalizedQuery
+  );
+
+  return hasExactAnchor || getBusinessIntentTokens(query).length === 0;
+}
+
+function formatReviewSearchPlace(place) {
+  return formatRecommendedPlace({
+    ...place,
+    kakaoPlaceId: place.kakaoPlaceId || place.id,
+    summary: place.summary || place.address || place.categoryPath || place.type || "",
+    reviewText:
+      place.reviewText ||
+      place.description ||
+      [place.address, place.phone ? `전화: ${place.phone}` : "", place.url ? "상세 정보가 있는 실제 검색 결과입니다." : ""]
+        .filter(Boolean)
+        .join(" "),
+  });
+}
+
+function findDirectBusinessMatch(query, results) {
+  const businessResults = results.filter(isReviewableBusinessPlace);
+  if (!businessResults.length) return null;
+
+  const normalizedQuery = normalizeSearchToken(query);
+  const intentTokens = getBusinessIntentTokens(query);
+
+  return (
+    businessResults.find((place) => {
+      const normalizedName = normalizeSearchToken(place.name);
+      if (!normalizedName) return false;
+
+      if (normalizedName === normalizedQuery || normalizedName.includes(normalizedQuery)) return true;
+      if (normalizedQuery.includes(normalizedName) && normalizedName.length >= 2) return true;
+
+      return intentTokens.some((token) => normalizedName.includes(token));
+    }) || null
+  );
+}
+
+function findAnchorPlace(query, results) {
+  const normalizedQuery = normalizeSearchToken(query);
+
+  return (
+    results.find((place) => isAnchorSearchPlace(place) && normalizeSearchToken(place.name) === normalizedQuery) ||
+    results.find(isAnchorSearchPlace) ||
+    results.find((place) => !isReviewableBusinessPlace(place)) ||
+    null
+  );
+}
+
+function isAnchorSearchPlace(place = {}) {
+  const code = String(place.categoryCode || place.kakaoCategoryCode || place.category || "").toUpperCase();
+  const name = normalizeSearchText(place.name);
+  const categoryText = normalizeSearchText([place.categoryPath, place.categoryName, place.type].filter(Boolean).join(" "));
+
+  if (["SW8", "AT4", "CT1"].includes(code)) return true;
+  if (/지하철|전철|정류장|터미널|공항|관광명소|문화시설/.test(categoryText)) return true;
+  return /(?:역|동|읍|면|리|구|시|군|거리|공원|광장|해수욕장|시장)$/.test(name);
+}
+
+function isReviewableBusinessPlace(place = {}) {
+  if (isAnchorSearchPlace(place)) return false;
+
+  const code = String(place.categoryCode || place.kakaoCategoryCode || place.category || "").toUpperCase();
+  const text = normalizeSearchText([place.categoryPath, place.categoryName, place.type, place.name].filter(Boolean).join(" "));
+  const businessCodes = new Set(["FD6", "CE7", "AD5", "CS2", "MT1", "PK6", "OL7", "BK9", "HP8", "PM9"]);
+
+  return businessCodes.has(code) || /음식점|카페|술집|주점|숙박|편의점|마트|상점|매장|병원|약국|은행|주차장/.test(text);
+}
+
+function getBusinessIntentTokens(query) {
+  return normalizeSearchText(query)
+    .split(/\s+/)
+    .map((token) => normalizeSearchToken(token))
+    .filter((token) => token.length >= 2)
+    .filter((token) => !/역$|동$|구$|시$|군$|읍$|면$|리$|로$|길$/.test(token))
+    .filter((token) => !["근처", "주변", "맛집", "카페", "가게", "리뷰", "장소"].includes(token));
+}
+
+function normalizeSearchText(value = "") {
+  return String(value).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSearchToken(value = "") {
+  return normalizeSearchText(value).replace(/\s+/g, "");
 }
 
 function ReviewComposer({ place, user, reviews, status, onSubmit }) {

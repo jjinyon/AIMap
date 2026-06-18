@@ -37,12 +37,16 @@ export async function searchPlaces(query, location) {
   });
 }
 
-const nearbyCategoryCodes = ["FD6", "CE7", "AT4", "CT1"];
+const nearbyCategoryCodes = ["FD6", "CE7", "CS2", "MT1", "AD5", "AT4", "CT1"];
 
-export async function fetchNearbyReviewPlaces(location) {
+export async function fetchNearbyReviewPlaces(location, options = {}) {
   if (!location?.lat || !location?.lng) return [];
 
   const kyungheePlaces = isNearKyunghee(location) ? makeKyungheePlacesForLocation(location) : [];
+  const radius = Number.isFinite(options.radius) ? options.radius : 1200;
+  const limit = Number.isFinite(options.limit) ? options.limit : 10;
+  const pageCount = Number.isFinite(options.pageCount) ? options.pageCount : 1;
+  const size = Number.isFinite(options.size) ? options.size : 8;
 
   try {
     await waitForKakaoMaps();
@@ -52,11 +56,13 @@ export async function fetchNearbyReviewPlaces(location) {
   }
 
   const results = await Promise.all(
-    nearbyCategoryCodes.map((code) => searchNearbyCategory(code, location).catch(() => []))
+    nearbyCategoryCodes.map((code) =>
+      searchNearbyCategoryPages(code, location, { radius, pageCount, size }).catch(() => [])
+    )
   );
 
   return sortNearbyPlaces(dedupePlaces([...kyungheePlaces, ...results.flat()]))
-    .slice(0, 10)
+    .slice(0, limit)
     .map((place, index) => ({
       ...place,
       kakaoPlaceId: place.id,
@@ -76,7 +82,18 @@ function makeKyungheePlacesForLocation(location) {
   }));
 }
 
-function searchNearbyCategory(categoryCode, location) {
+async function searchNearbyCategoryPages(categoryCode, location, options) {
+  const pageCount = Math.max(1, Math.min(Number(options.pageCount || 1), 3));
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, index) =>
+      searchNearbyCategory(categoryCode, location, { ...options, page: index + 1 })
+    )
+  );
+
+  return pages.flat();
+}
+
+function searchNearbyCategory(categoryCode, location, options = {}) {
   return new Promise((resolve, reject) => {
     const places = new kakao.maps.services.Places();
 
@@ -97,8 +114,9 @@ function searchNearbyCategory(categoryCode, location) {
       },
       {
         location: new kakao.maps.LatLng(location.lat, location.lng),
-        radius: 1200,
-        size: 8,
+        radius: Number.isFinite(options.radius) ? options.radius : 1200,
+        size: Number.isFinite(options.size) ? options.size : 8,
+        page: Number.isFinite(options.page) ? options.page : 1,
         sort: kakao.maps.services.SortBy.DISTANCE,
       }
     );
