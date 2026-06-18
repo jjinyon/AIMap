@@ -49,6 +49,7 @@ export function MapView({
       onTrackingChange?.(false);
     });
 
+    ensureUserMarker(center);
     setMapReady(true);
     setTimeout(() => mapRef.current?.relayout(), 0);
   }, [location.lat, location.lng]);
@@ -63,7 +64,14 @@ export function MapView({
       mapRef.current.setCenter(center);
     }
 
+    ensureUserMarker(center);
+  }, [mapReady, location, isTrackingLocation]);
+
+  function ensureUserMarker(center) {
+    if (!mapRef.current) return;
+
     if (userMarkerRef.current) {
+      userMarkerRef.current.setMap(mapRef.current);
       userMarkerRef.current.setPosition(center);
       return;
     }
@@ -79,7 +87,7 @@ export function MapView({
     kakao.maps.event.addListener(userMarkerRef.current, "click", () => {
       openInfoWindow(userInfoRef.current, userMarkerRef.current);
     });
-  }, [location, isTrackingLocation]);
+  }
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
