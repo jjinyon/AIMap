@@ -87,6 +87,25 @@ export function getUserById(userId) {
   return loadStoredUsers().find((user) => user.id === userId) || null;
 }
 
+export function updateUserPreferences(userId, preferences) {
+  const users = loadStoredUsers();
+  const userIndex = users.findIndex((user) => user.id === userId);
+
+  if (userIndex === -1) {
+    throw new Error("사용자 정보를 찾지 못했습니다.");
+  }
+
+  const updatedUser = {
+    ...users[userIndex],
+    preferences: normalizePreferences(preferences),
+    updatedAt: new Date().toISOString(),
+  };
+  const nextUsers = users.map((user, index) => (index === userIndex ? updatedUser : user));
+
+  saveStoredUsers(nextUsers);
+  return updatedUser;
+}
+
 export function setCurrentUserId(userId) {
   window.localStorage.setItem(CURRENT_USER_KEY, userId);
 }

@@ -5,7 +5,7 @@ import { SignupPage } from "./SignupPage.js";
 import { useCurrentLocation } from "../hooks/useCurrentLocation.js";
 import { audioGenreFilters } from "../data/audioEpisodeData.js";
 import { reviewMockData } from "../data/reviewMockData.js";
-import { getCurrentUser, loginUser, logoutUser } from "../services/authService.js";
+import { getCurrentUser, loginUser, logoutUser, updateCurrentUserPreferences } from "../services/authService.js";
 import { getEpisodesNearLocation } from "../services/audioEpisodeService.js";
 import { fetchNearbyReviewPlaces, searchPlaces } from "../services/geocodingService.js";
 import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.js";
@@ -14,7 +14,7 @@ import { recommendKakaoPlacesWithReviewData, recommendLocalExperienceRoutes } fr
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
 import { generateLocalReviewsForPlace, getGeneratedLocalReviewStats } from "../services/localReviewInsightService.js";
 import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
-import { cityOptions } from "../services/userProfileService.js";
+import { cityOptions, preferenceOptions } from "../services/userProfileService.js";
 import {
   canSpeak,
   isPaused,
@@ -187,6 +187,7 @@ export function Home({ appStatus }) {
           locationStatus,
           onRequestLocation: locate,
           onAuthenticated: completeAuth,
+          onUserChange: setAuthUser,
           onLogout: logout,
           setScreen: navigateTo,
           mapBackSignal,
@@ -214,7 +215,7 @@ export function Home({ appStatus }) {
   );
 }
 
-function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, locationStatus, onRequestLocation, onAuthenticated, onLogout, setScreen, mapBackSignal, onMapBackStateChange, audioBackSignal, onAudioBackStateChange, reviewBackSignal, onReviewBackStateChange }) {
+function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, locationStatus, onRequestLocation, onAuthenticated, onUserChange, onLogout, setScreen, mapBackSignal, onMapBackStateChange, audioBackSignal, onAudioBackStateChange, reviewBackSignal, onReviewBackStateChange }) {
   if (isAuthLoading) {
     return h(LoadingScreen);
   }
@@ -239,6 +240,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, lo
   if (screen === "account") {
     return h(AccountScreen, {
       user: authUser,
+      onUserChange,
       onLogout,
     });
   }
@@ -457,6 +459,33 @@ function buildLocalRoutes(candidatePlaces, location, destination, user) {
   });
 }
 
+function getPreferenceRecommendationOptions(user, options = {}) {
+  const hasCategoryPreference = Boolean(user?.preferences?.categories?.length);
+  const preferenceWeights = hasCategoryPreference
+    ? {
+        distance: 0.35,
+        review: 0.65,
+        local: 0.85,
+        preference: 3.4,
+        time: 0.45,
+        crowd: 0.55,
+      }
+    : {};
+
+  return {
+    ...options,
+    weights: {
+      ...(options.weights || {}),
+      ...Object.fromEntries(
+        Object.entries(preferenceWeights).map(([key, value]) => [
+          key,
+          Math.max(Number(options.weights?.[key] || 0), value),
+        ])
+      ),
+    },
+  };
+}
+
 function MapScreen({ location, locationStatus, onRequestLocation, appStatus, user, backSignal = 0, onBackStateChange }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -606,7 +635,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
         const recommended = await recommendKakaoPlacesWithReviewData(
           places,
           { userLocation: mapCenter, userPreference: user?.preferences },
-          { limit: 10, metricsLimit: 10 }
+          getPreferenceRecommendationOptions(user, { limit: 10, metricsLimit: 10 })
         );
         if (!ignore) setRecommendedPlaces(recommended.map(formatRecommendedPlace));
       } catch {
@@ -644,7 +673,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
         const recommended = await recommendKakaoPlacesWithReviewData(
           nearbyPlaces,
           { userLocation: selectedPlace, userPreference: user?.preferences },
-          { limit: 8, metricsLimit: 8 }
+          getPreferenceRecommendationOptions(user, { limit: 8, metricsLimit: 8 })
         );
 
         if (ignore) return;
@@ -887,7 +916,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     const recommendedCandidates = await recommendKakaoPlacesWithReviewData(
       rawCandidates,
       { userLocation: location, userPreference: user?.preferences },
-      { limit: 24, metricsLimit: 18 }
+      getPreferenceRecommendationOptions(user, { limit: 24, metricsLimit: 18 })
     ).catch(() => rawCandidates);
 
     return dedupeCandidatePlaces(recommendedCandidates.map(formatRecommendedPlace), selectedPlace);
@@ -1387,7 +1416,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
         const recommended = await recommendKakaoPlacesWithReviewData(
           places,
           { userLocation: location, userPreference: user?.preferences },
-          { limit: 10, metricsLimit: 10 }
+          getPreferenceRecommendationOptions(user, { limit: 10, metricsLimit: 10 })
         );
         if (ignore) return;
 
@@ -1668,7 +1697,7 @@ async function resolveReviewSearch(query, location, user) {
     const recommended = await recommendKakaoPlacesWithReviewData(
       [directPlace],
       { userLocation: location, userPreference: user?.preferences },
-      { limit: 1, metricsLimit: 1 }
+      getPreferenceRecommendationOptions(user, { limit: 1, metricsLimit: 1 })
     );
     const places = (recommended.length ? recommended : [directPlace]).map(formatReviewSearchPlace);
     const firstPlace = places[0];
@@ -1693,12 +1722,12 @@ async function resolveReviewSearch(query, location, user) {
   const recommended = await recommendKakaoPlacesWithReviewData(
     nearbyBusinesses,
     { userLocation: anchorPlace, userPreference: user?.preferences },
-    {
+    getPreferenceRecommendationOptions(user, {
       limit: nearbyBusinesses.length,
       metricsLimit: Math.min(nearbyBusinesses.length, 60),
       normalizationLimits: { maxDistanceKm: 1 },
       weights: { distance: 1.1, preference: 1.8 },
-    }
+    })
   );
   const places = recommended.map(formatReviewSearchPlace);
 
@@ -2484,8 +2513,38 @@ function AuthScreen({ onAuthenticated }) {
   );
 }
 
-function AccountScreen({ user, onLogout }) {
+function AccountScreen({ user, onUserChange, onLogout }) {
   const [status, setStatus] = useState("");
+  const [preferences, setPreferences] = useState(() => normalizeEditablePreferences(user?.preferences));
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+
+  useEffect(() => {
+    setPreferences(normalizeEditablePreferences(user?.preferences));
+    setStatus("");
+  }, [user?.id]);
+
+  const togglePreference = (group, value) => {
+    setPreferences((current) => {
+      const values = new Set(current[group] || []);
+      values.has(value) ? values.delete(value) : values.add(value);
+      return { ...current, [group]: [...values] };
+    });
+  };
+
+  const savePreferences = async () => {
+    setStatus("");
+    setIsSavingPreferences(true);
+
+    try {
+      const payload = await updateCurrentUserPreferences(preferences);
+      onUserChange?.(payload.user);
+      setStatus("취향이 저장되었습니다. 추천 결과에 바로 반영됩니다.");
+    } catch (error) {
+      setStatus(error.message || "취향을 저장하지 못했습니다.");
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
 
   const submitLogout = async () => {
     setStatus("");
@@ -2507,10 +2566,109 @@ function AccountScreen({ user, onLogout }) {
       h("h1", null, `${user.nickname}님`),
       h("p", { className: "account-email" }, user.email),
       user.city ? h("p", { className: "account-city" }, user.city) : null,
+      h(
+        "section",
+        { className: "account-preferences", "aria-label": "내 취향 설정" },
+        h("h2", null, "내 취향"),
+        h(AccountPreferenceSection, {
+          title: "좋아하는 장소",
+          options: preferenceOptions.categories,
+          selectedValues: preferences.categories,
+          onToggle: (value) => togglePreference("categories", value),
+        }),
+        h(AccountPreferenceSection, {
+          title: "좋아하는 분위기",
+          options: preferenceOptions.moods,
+          selectedValues: preferences.moods,
+          onToggle: (value) => togglePreference("moods", value),
+        }),
+        h(AccountCompanionSection, {
+          value: preferences.companion,
+          options: preferenceOptions.companions,
+          onChange: (companion) => setPreferences((current) => ({ ...current, companion })),
+        }),
+        h(AccountPreferenceSection, {
+          title: "오디오 관심사",
+          options: preferenceOptions.audioInterests,
+          selectedValues: preferences.audioInterests,
+          onToggle: (value) => togglePreference("audioInterests", value),
+        }),
+        h(
+          "button",
+          { className: "primary-action", type: "button", disabled: isSavingPreferences, onClick: savePreferences },
+          isSavingPreferences ? "저장 중..." : "취향 저장하기"
+        )
+      ),
       h("button", { className: "primary-action", type: "button", onClick: submitLogout }, "로그아웃"),
       status ? h("p", { className: "auth-status", role: "alert" }, status) : null
     )
   );
+}
+
+function AccountPreferenceSection({ title, options, selectedValues, onToggle }) {
+  const selected = new Set(selectedValues || []);
+
+  return h(
+    "fieldset",
+    { className: "preference-section" },
+    h("legend", null, title),
+    h(
+      "div",
+      { className: "preference-chip-grid" },
+      options.map((option) =>
+        h(
+          "label",
+          {
+            key: option.value,
+            className: selected.has(option.value) ? "preference-chip selected" : "preference-chip",
+          },
+          h("input", {
+            type: "checkbox",
+            checked: selected.has(option.value),
+            onChange: () => onToggle(option.value),
+          }),
+          h("span", null, option.label)
+        )
+      )
+    )
+  );
+}
+
+function AccountCompanionSection({ value, options, onChange }) {
+  return h(
+    "fieldset",
+    { className: "preference-section" },
+    h("legend", null, "주로 함께 다니는 사람"),
+    h(
+      "div",
+      { className: "preference-chip-grid compact" },
+      options.map((option) =>
+        h(
+          "label",
+          {
+            key: option.value,
+            className: value === option.value ? "preference-chip selected" : "preference-chip",
+          },
+          h("input", {
+            type: "radio",
+            name: "account-companion",
+            checked: value === option.value,
+            onChange: () => onChange(option.value),
+          }),
+          h("span", null, option.label)
+        )
+      )
+    )
+  );
+}
+
+function normalizeEditablePreferences(preferences = {}) {
+  return {
+    categories: Array.isArray(preferences.categories) ? preferences.categories : [],
+    moods: Array.isArray(preferences.moods) ? preferences.moods : [],
+    companion: preferences.companion || "friend",
+    audioInterests: Array.isArray(preferences.audioInterests) ? preferences.audioInterests : [],
+  };
 }
 
 function SignupScreen({ onOpenSettings, onSignupComplete }) {

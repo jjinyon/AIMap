@@ -3195,6 +3195,28 @@ button {
   font-weight: 900;
 }
 
+.account-preferences {
+  display: grid;
+  gap: 9px;
+  margin: 8px 0 10px;
+}
+
+.account-preferences h2 {
+  margin: 0;
+  color: #202020;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.account-preferences .preference-chip-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-preferences + .primary-action {
+  background: #6f6f6f;
+  box-shadow: none;
+}
+
 .profile-field {
   display: grid;
   gap: 4px;

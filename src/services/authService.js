@@ -6,6 +6,7 @@ import {
   getUserById,
   setCurrentUserId,
   toPublicUser,
+  updateUserPreferences,
 } from "./userProfileService.js";
 
 export async function registerUser({ name, email, city, password, preferences }) {
@@ -57,6 +58,15 @@ export async function getCurrentUser() {
   }
 
   return { user: toPublicUser(user) };
+}
+
+export async function updateCurrentUserPreferences(preferences) {
+  const userId = getCurrentUserId();
+  if (!userId) {
+    throw new Error("로그인이 필요합니다.");
+  }
+
+  return { user: toPublicUser(updateUserPreferences(userId, preferences)) };
 }
 
 function validateRegistration({ name, email, city, password }) {

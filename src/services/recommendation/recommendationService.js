@@ -1,13 +1,13 @@
 import { fetchReviewMetricsForKakaoPlaces } from "../placeReviewMetricsService.js";
 
 export const DEFAULT_RECOMMENDATION_WEIGHTS = {
-  distance: 0.55,
-  review: 0.8,
-  local: 1.4,
-  preference: 1.6,
+  distance: 0.45,
+  review: 0.7,
+  local: 1,
+  preference: 2.8,
   weather: 1,
-  time: 0.7,
-  crowd: 0.9,
+  time: 0.55,
+  crowd: 0.65,
 };
 
 export const DEFAULT_NORMALIZATION_LIMITS = {
@@ -272,7 +272,8 @@ export function calculateLocalScore(localReviewCount = 0, totalReviewCount = 0) 
 export function calculatePreferenceScore(userPreference = {}, place) {
   const preferredCategories = new Set(toArray(userPreference.categories).map(normalizeCategory));
   const placeCategory = normalizeCategory(place.category);
-  const categoryScore = preferredCategories.size > 0 && preferredCategories.has(placeCategory) ? 1 : 0;
+  const hasCategoryPreference = preferredCategories.size > 0;
+  const categoryScore = !hasCategoryPreference ? 0.5 : preferredCategories.has(placeCategory) ? 1 : 0;
   const moodScore = calculateKeywordPreferenceMatch(userPreference.moods, place, MOOD_KEYWORDS);
   const companionScore = calculateCompanionMatch(userPreference.companion, place);
   const audioInterestScore = calculateKeywordPreferenceMatch(
@@ -281,7 +282,9 @@ export function calculatePreferenceScore(userPreference = {}, place) {
     AUDIO_INTEREST_KEYWORDS
   );
 
-  const score = 0.4 * categoryScore + 0.3 * moodScore + 0.2 * companionScore + 0.1 * audioInterestScore;
+  const score = hasCategoryPreference
+    ? 0.72 * categoryScore + 0.14 * moodScore + 0.08 * companionScore + 0.06 * audioInterestScore
+    : 0.35 * categoryScore + 0.35 * moodScore + 0.2 * companionScore + 0.1 * audioInterestScore;
 
   return roundScore(clamp(score, 0, 1));
 }
