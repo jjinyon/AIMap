@@ -49,7 +49,6 @@ const audioOptions = [
 
 const routeOptions = [
   { id: "fast", label: "빠르게" },
-  { id: "stairs", label: "계단 X" },
   { id: "local", label: "지역 만끽" },
   { id: "personal", label: "퍼스널" },
 ];
