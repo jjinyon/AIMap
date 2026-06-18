@@ -17,9 +17,16 @@ export function mergeReviewMetricsByKakaoId(kakaoPlaces, googleMetricsByKakaoId 
       const google = googleMetricsByKakaoId[place.id] || {};
       const local = localStatsByPlaceId[place.id] || {};
       const generatedLocal = getGeneratedLocalReviewStats(place);
-      const localReviewCount = Number(local.reviewCount || 0) || generatedLocal.localReviewCount;
+      const realLocalReviewCount = Number(local.reviewCount || 0);
       const googleReviewCount = Number(google.reviewCount || 0);
-      const localRating = Number(local.rating || 0) || generatedLocal.localRating;
+      const generatedLocalReviewCount = Number(generatedLocal.localReviewCount || 0);
+      const localReviewCount = realLocalReviewCount + generatedLocalReviewCount;
+      const localRating = weightedAverageRating(
+        Number(local.rating || 0),
+        realLocalReviewCount,
+        Number(generatedLocal.localRating || 0),
+        generatedLocalReviewCount
+      );
 
       return [
         place.id,
@@ -37,4 +44,11 @@ export function mergeReviewMetricsByKakaoId(kakaoPlaces, googleMetricsByKakaoId 
       ];
     })
   );
+}
+
+function weightedAverageRating(realRating, realCount, generatedRating, generatedCount) {
+  const total = realCount + generatedCount;
+  if (!total) return 0;
+
+  return Math.round(((realRating * realCount + generatedRating * generatedCount) / total) * 10) / 10;
 }

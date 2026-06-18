@@ -12,6 +12,7 @@ import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 import { recommendKakaoPlacesWithReviewData, recommendLocalExperienceRoutes } from "../services/recommendation/index.js";
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
+import { generateLocalReviewsForPlace } from "../services/localReviewInsightService.js";
 import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
 import { cityOptions } from "../services/userProfileService.js";
 import {
@@ -285,6 +286,32 @@ function formatRecommendedPlace(place) {
   };
 }
 
+function mergeDemoReviews(place = {}, reviews = []) {
+  const generatedReviews = Array.isArray(place.generatedLocalReviews) && place.generatedLocalReviews.length
+    ? place.generatedLocalReviews
+    : generateLocalReviewsForPlace(place);
+  const seen = new Set(reviews.map((review) => review.id));
+  const normalizedGeneratedReviews = generatedReviews
+    .map((review, index) => ({
+      userNickname: review.userNickname || review.authorName || "국제캠퍼스 방문자",
+      userCity: review.userCity || "경기 용인시 기흥구",
+      userNeighborhood: review.userNeighborhood || review.userCity || "",
+      isLocalResident: Boolean(review.isLocalResident ?? review.localResident),
+      content: review.content || review.text || "",
+      createdAt: review.createdAt || new Date().toISOString(),
+      source: "demo-generated",
+      isSynthetic: true,
+      ...review,
+      id: review.id || `demo-review-${place.id || place.name || "place"}-${index}`,
+      placeId: review.placeId || place.id || "",
+      placeName: review.placeName || place.name || "",
+      placeAddress: review.placeAddress || place.address || "",
+    }))
+    .filter((review) => review.content && !seen.has(review.id));
+
+  return [...reviews, ...normalizedGeneratedReviews];
+}
+
 const ROUTE_CORRIDOR_SAMPLE_COUNT = 3;
 
 function sampleRouteCorridor(routePoints = [], sampleCount = ROUTE_CORRIDOR_SAMPLE_COUNT) {
@@ -548,12 +575,13 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
         const { reviews } = await fetchPlaceReviews(selectedPlace.id);
         if (ignore) return;
 
-        setDestinationReviews(reviews || []);
+        setDestinationReviews(mergeDemoReviews(selectedPlace, reviews || []));
         setDestinationReviewStatus("");
       } catch (error) {
         if (!ignore) {
-          setDestinationReviews([]);
-          setDestinationReviewStatus(error.message);
+          const demoReviews = mergeDemoReviews(selectedPlace, []);
+          setDestinationReviews(demoReviews);
+          setDestinationReviewStatus(demoReviews.length ? "" : error.message);
         }
       }
     }
@@ -1297,10 +1325,14 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
         const { reviews } = await fetchPlaceReviews(selectedPlaceId);
         if (ignore) return;
 
-        setReviewsByPlace((current) => ({ ...current, [selectedPlaceId]: reviews }));
+        setReviewsByPlace((current) => ({ ...current, [selectedPlaceId]: mergeDemoReviews(selectedPlace, reviews || []) }));
         setReviewStatus("");
       } catch (error) {
-        if (!ignore) setReviewStatus(error.message);
+        if (!ignore) {
+          const demoReviews = mergeDemoReviews(selectedPlace, []);
+          setReviewsByPlace((current) => ({ ...current, [selectedPlaceId]: demoReviews }));
+          setReviewStatus(demoReviews.length ? "" : error.message);
+        }
       }
     }
 
@@ -1309,7 +1341,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     return () => {
       ignore = true;
     };
-  }, [selectedPlaceId]);
+  }, [selectedPlaceId, selectedPlace]);
 
   const runReviewSearch = async (keyword) => {
     const trimmedKeyword = keyword.trim();
