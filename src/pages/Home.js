@@ -12,7 +12,7 @@ import { createPlaceReview, fetchPlaceReviews } from "../services/reviewService.
 import { findRoute, formatRouteSummary } from "../services/routingService.js";
 import { recommendKakaoPlacesWithReviewData, recommendLocalExperienceRoutes } from "../services/recommendation/index.js";
 import { loadCurrentPlaceAudioStories } from "../services/audio/triggerService.js";
-import { generateLocalReviewsForPlace } from "../services/localReviewInsightService.js";
+import { generateLocalReviewsForPlace, getGeneratedLocalReviewStats } from "../services/localReviewInsightService.js";
 import { isPlaceSaved, loadSavedPlaces, toggleSavedPlace } from "../services/savedPlaceService.js";
 import { cityOptions } from "../services/userProfileService.js";
 import {
@@ -266,15 +266,16 @@ function getScreenTitle(screen) {
 }
 
 function formatRecommendedPlace(place) {
-  const reviewCount = Number(place.reviewCount || 0);
-  const rating = Number(place.rating || place.googleRating || place.localRating || 0);
+  const placeWithReviewMetrics = applyDemoReviewMetrics(place);
+  const reviewCount = Number(placeWithReviewMetrics.reviewCount || 0);
+  const rating = Number(placeWithReviewMetrics.rating || placeWithReviewMetrics.googleRating || placeWithReviewMetrics.localRating || 0);
   const ratingLabel = reviewCount
     ? `★ ${rating.toFixed(1)} (${reviewCount})`
-    : place.ratingLabel || (place.distance ? `${place.distance}m` : "");
+    : placeWithReviewMetrics.ratingLabel || (placeWithReviewMetrics.distance ? `${placeWithReviewMetrics.distance}m` : "");
 
   return {
-    ...place,
-    categoryCode: place.categoryCode || place.kakaoCategoryCode || place.category,
+    ...placeWithReviewMetrics,
+    categoryCode: placeWithReviewMetrics.categoryCode || placeWithReviewMetrics.kakaoCategoryCode || placeWithReviewMetrics.category,
     ratingLabel,
     aiReason:
       place.aiReason ||
@@ -284,6 +285,92 @@ function formatRecommendedPlace(place) {
         ? `Google ${place.googleReviewCount} reviews + local ${place.localReviewCount || 0}`
         : place.summary || place.address || ""),
   };
+}
+
+function applyDemoReviewMetrics(place = {}) {
+  const generatedStats = getGeneratedLocalReviewStats(place);
+  const existingGeneratedReviews = Array.isArray(place.generatedLocalReviews) ? place.generatedLocalReviews : [];
+  const generatedReviews = existingGeneratedReviews.length ? existingGeneratedReviews : generatedStats.generatedLocalReviews;
+  const alreadyHasGeneratedMetrics = existingGeneratedReviews.length > 0;
+  const generatedLocalCount = alreadyHasGeneratedMetrics ? 0 : Number(generatedStats.localReviewCount || 0);
+  const generatedLocalRating = alreadyHasGeneratedMetrics ? 0 : Number(generatedStats.localRating || 0);
+  const baseLocalCount = Number(place.localReviewCount || 0);
+  const baseReviewCount = Number(place.reviewCount || place.googleReviewCount || 0);
+  const localReviewCount = baseLocalCount + generatedLocalCount;
+  const reviewCount = Math.max(baseReviewCount + generatedLocalCount, localReviewCount);
+  const baseLocalRating = Number(place.localRating || (baseLocalCount ? place.rating : 0) || 0);
+  const localRating = weightedRating(baseLocalRating, baseLocalCount, generatedLocalRating, generatedLocalCount);
+  const baseRating = Number(place.rating || place.googleRating || baseLocalRating || 0);
+  const rating = localRating
+    ? weightedRating(baseRating, Math.max(baseReviewCount - baseLocalCount, 0), localRating, localReviewCount)
+    : baseRating;
+
+  return {
+    ...place,
+    rating: rating || baseRating,
+    reviewCount,
+    localRating: localRating || baseLocalRating,
+    localReviewCount,
+    generatedLocalReviews: generatedReviews,
+  };
+}
+
+function weightedRating(aRating, aCount, bRating, bCount) {
+  const total = Number(aCount || 0) + Number(bCount || 0);
+  if (!total) return Number(aRating || bRating || 0);
+
+  return Math.round(((Number(aRating || 0) * Number(aCount || 0) + Number(bRating || 0) * Number(bCount || 0)) / total) * 10) / 10;
+}
+
+const REVIEW_SEARCH_HISTORY_KEY = "ai-place-review-search-history";
+
+function loadReviewSearchHistory() {
+  try {
+    const parsed = JSON.parse(window.localStorage?.getItem(REVIEW_SEARCH_HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.keyword).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveReviewSearchHistory(keyword) {
+  const trimmedKeyword = String(keyword || "").trim();
+  if (!trimmedKeyword) return loadReviewSearchHistory();
+
+  const today = new Date();
+  const item = {
+    id: `history-${hashSearchKeyword(trimmedKeyword)}-${today.toISOString().slice(0, 10)}`,
+    keyword: trimmedKeyword,
+    date: `${String(today.getMonth() + 1).padStart(2, "0")}.${String(today.getDate()).padStart(2, "0")}`,
+    createdAt: today.toISOString(),
+  };
+  const nextHistory = [
+    item,
+    ...loadReviewSearchHistory().filter((historyItem) => historyItem.keyword !== trimmedKeyword),
+  ].slice(0, 8);
+  writeReviewSearchHistory(nextHistory);
+  return nextHistory;
+}
+
+function removeReviewSearchHistory(historyId) {
+  const nextHistory = loadReviewSearchHistory().filter((item) => item.id !== historyId);
+  writeReviewSearchHistory(nextHistory);
+  return nextHistory;
+}
+
+function writeReviewSearchHistory(history) {
+  try {
+    window.localStorage?.setItem(REVIEW_SEARCH_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // Ignore private browsing or storage quota failures.
+  }
+}
+
+function hashSearchKeyword(value = "") {
+  return String(value)
+    .split("")
+    .reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7)
+    .toString(36);
 }
 
 function mergeDemoReviews(place = {}, reviews = []) {
@@ -594,10 +681,11 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
   }, [selectedPlace?.id]);
 
   const selectDestination = (destination) => {
-    setSelectedPlace(destination);
+    const destinationWithReviewMetrics = formatRecommendedPlace(destination);
+    setSelectedPlace(destinationWithReviewMetrics);
     setDestinationReviews([]);
     setDestinationReviewStatus("");
-    setMapCenter({ lat: destination.lat, lng: destination.lng });
+    setMapCenter({ lat: destinationWithReviewMetrics.lat, lng: destinationWithReviewMetrics.lng });
     setBottomSheetState("collapsed");
     closeLocalRoutes();
     setRouteModeActive(false);
@@ -1235,6 +1323,8 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const [searchStatus, setSearchStatus] = useState("");
   const [isSearchingReviews, setIsSearchingReviews] = useState(false);
   const [searchModeLabel, setSearchModeLabel] = useState("");
+  const [searchHistory, setSearchHistory] = useState(loadReviewSearchHistory);
+  const [reviewAudienceFilter, setReviewAudienceFilter] = useState("local");
   const [nearbyStatus, setNearbyStatus] = useState("현재 위치 주변 장소를 찾고 있습니다.");
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [reviewsByPlace, setReviewsByPlace] = useState({});
@@ -1278,7 +1368,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const showResults = view === "results";
   const showHistory = view === "history";
   const visiblePlaces = showResults
-    ? searchResultPlaces
+    ? searchResultPlaces.map((place) => applyReviewAudienceMetrics(place, reviewAudienceFilter))
     : nearbyPlaces.length
       ? nearbyPlaces
       : reviewMockData.recommendedPlaces;
@@ -1360,6 +1450,7 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     setSearchModeLabel("");
     setView("results");
     setSelectedPlaceId(null);
+    setSearchHistory(saveReviewSearchHistory(trimmedKeyword));
 
     try {
       const outcome = await resolveReviewSearch(trimmedKeyword, location, user);
@@ -1404,6 +1495,26 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
     }));
   };
 
+  if (selectedPlace) {
+    return h(
+      "div",
+      { className: "screen-layer review-screen review-detail-screen" },
+      h(ReviewPlaceDetailPage, {
+        place: selectedPlace,
+        reviews: selectedReviews,
+        reviewStatus,
+        onClose: () => setSelectedPlaceId(null),
+        reviewForm: h(ReviewComposer, {
+          place: selectedPlace,
+          user,
+          reviews: selectedReviews,
+          status: reviewStatus,
+          onSubmit: submitPlaceReview,
+        }),
+      })
+    );
+  }
+
   return h(
     "div",
     { className: "screen-layer review-screen" },
@@ -1427,8 +1538,19 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
       "div",
       { className: "review-body" },
       showHistory
-        ? h(ReviewHistoryList, { history: reviewMockData.searchHistory, onSelect: selectHistory })
+        ? h(ReviewHistoryList, {
+            history: searchHistory,
+            onSelect: selectHistory,
+            onRemove: (historyItem) => setSearchHistory(removeReviewSearchHistory(historyItem.id)),
+          })
         : [
+            showResults
+              ? h(ReviewAudienceTabs, {
+                  key: "audience",
+                  activeFilter: reviewAudienceFilter,
+                  onSelect: setReviewAudienceFilter,
+                })
+              : null,
             showResults
               ? searchModeLabel
                 ? h("p", { key: "mode", className: "review-status", role: "status" }, searchModeLabel)
@@ -1474,8 +1596,14 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
 
 async function resolveReviewSearch(query, location, user) {
   const rawResults = await searchPlaces(query, location);
+  const categoryIntent = getSearchCategoryIntent(query);
+  const anchorQuery = categoryIntent ? stripCategoryIntent(query) : query;
+  const anchorResults =
+    categoryIntent && normalizeSearchToken(anchorQuery) !== normalizeSearchToken(query)
+      ? await searchPlaces(anchorQuery, location).catch(() => [])
+      : rawResults;
 
-  if (!rawResults.length) {
+  if (!rawResults.length && !anchorResults.length) {
     return {
       places: [],
       autoSelectId: "",
@@ -1484,8 +1612,13 @@ async function resolveReviewSearch(query, location, user) {
     };
   }
 
-  const anchorPlace = findAnchorPlace(query, rawResults) || rawResults[0];
-  const directPlace = isLocationOnlyQuery(query, rawResults) ? null : findDirectBusinessMatch(query, rawResults);
+  const anchorPlace =
+    findAnchorPlace(anchorQuery, anchorResults.length ? anchorResults : rawResults) ||
+    findAnchorPlace(query, rawResults) ||
+    anchorResults[0] ||
+    rawResults[0];
+  const shouldSearchAroundAnchor = Boolean(categoryIntent && anchorPlace);
+  const directPlace = shouldSearchAroundAnchor || isLocationOnlyQuery(query, rawResults) ? null : findDirectBusinessMatch(query, rawResults);
   if (directPlace) {
     const recommended = await recommendKakaoPlacesWithReviewData(
       [directPlace],
@@ -1509,7 +1642,9 @@ async function resolveReviewSearch(query, location, user) {
     pageCount: 3,
     size: 15,
   });
-  const nearbyBusinesses = nearbyPlaces.filter((place) => !isSamePlace(place, anchorPlace));
+  const nearbyBusinesses = nearbyPlaces
+    .filter((place) => !isSamePlace(place, anchorPlace))
+    .filter((place) => !categoryIntent || doesPlaceMatchCategoryIntent(place, categoryIntent));
   const recommended = await recommendKakaoPlacesWithReviewData(
     nearbyBusinesses,
     { userLocation: anchorPlace, userPreference: user?.preferences },
@@ -1541,6 +1676,75 @@ function isLocationOnlyQuery(query, results) {
   return hasExactAnchor || getBusinessIntentTokens(query).length === 0;
 }
 
+const CATEGORY_INTENT_KEYWORDS = {
+  food: new Set(["밥", "음식점", "식당", "밥집", "맛집", "분식", "한식", "중식", "일식", "양식", "고기", "치킨", "피자"]),
+  cafe: new Set(["카페", "커피", "디저트", "베이커리"]),
+  drink: new Set(["술", "술집", "주점", "바", "호프", "맥주", "이자카야", "포차", "와인", "bar"]),
+  convenience: new Set(["편의점", "마트", "상점", "매장"]),
+};
+
+function getSearchIntentTokens(query = "") {
+  const spacedTokens = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+  const compact = normalizeSearchToken(query);
+  const embeddedTokens = Object.values(CATEGORY_INTENT_KEYWORDS)
+    .flatMap((keywords) => [...keywords])
+    .filter((keyword) => keyword.length > 1 && compact.includes(normalizeSearchToken(keyword)));
+
+  return [...new Set([...spacedTokens, ...embeddedTokens].map(normalizeSearchToken).filter(Boolean))];
+}
+
+function hasAnyKeyword(text = "", keywords = new Set()) {
+  const normalizedText = normalizeSearchText(text);
+  const tokens = normalizedText.split(/\s+/);
+
+  return [...keywords].some((keyword) => {
+    const normalizedKeyword = normalizeSearchToken(keyword);
+    if (!normalizedKeyword) return false;
+    if (normalizedKeyword === "바") return tokens.includes("바");
+    if (normalizedKeyword === "술") return tokens.includes("술");
+    return normalizeSearchToken(normalizedText).includes(normalizedKeyword);
+  });
+}
+
+function getSearchCategoryIntent(query = "") {
+  const tokens = getSearchIntentTokens(query);
+  if (tokens.some((token) => CATEGORY_INTENT_KEYWORDS.drink.has(token))) return "drink";
+  if (tokens.some((token) => CATEGORY_INTENT_KEYWORDS.cafe.has(token))) return "cafe";
+  if (tokens.some((token) => CATEGORY_INTENT_KEYWORDS.food.has(token))) return "food";
+  if (tokens.some((token) => CATEGORY_INTENT_KEYWORDS.convenience.has(token))) return "convenience";
+  return "";
+}
+
+function stripCategoryIntent(query = "") {
+  return normalizeSearchText(query)
+    .split(/\s+/)
+    .filter((token) => !getSearchCategoryIntent(token))
+    .join(" ")
+    .trim() || query;
+}
+
+function doesPlaceMatchCategoryIntent(place = {}, intent = "") {
+  const code = String(place.categoryCode || place.kakaoCategoryCode || place.category || "").toUpperCase();
+  const tone = getKakaoCategoryMeta(place).tone;
+
+  if (intent === "drink") return tone === "drink";
+  if (intent === "cafe") return tone === "cafe" || code === "CE7";
+  if (intent === "food") return tone === "food" || (code === "FD6" && !["cafe", "drink"].includes(tone));
+  if (intent === "convenience") return ["convenience", "mart"].includes(tone) || ["CS2", "MT1"].includes(code);
+  return true;
+}
+
+function getCategoryIntentLabel(intent = "") {
+  const labels = {
+    drink: "술집",
+    cafe: "카페",
+    food: "음식점",
+    convenience: "생활 편의점",
+  };
+
+  return labels[intent] || "가게";
+}
+
 function formatReviewSearchPlace(place) {
   return formatRecommendedPlace({
     ...place,
@@ -1553,6 +1757,47 @@ function formatReviewSearchPlace(place) {
         .filter(Boolean)
         .join(" "),
   });
+}
+
+function applyReviewAudienceMetrics(place = {}, audience = "local") {
+  const placeWithMetrics = applyDemoReviewMetrics(place);
+  const reviews = Array.isArray(placeWithMetrics.generatedLocalReviews) && placeWithMetrics.generatedLocalReviews.length
+    ? placeWithMetrics.generatedLocalReviews
+    : generateLocalReviewsForPlace(placeWithMetrics);
+  const filteredReviews = reviews.filter((review) =>
+    audience === "local" ? Boolean(review.isLocalResident ?? review.localResident) : !Boolean(review.isLocalResident ?? review.localResident)
+  );
+  const fallbackCount =
+    audience === "local"
+      ? Number(placeWithMetrics.localReviewCount || 0)
+      : Math.max(0, Number(placeWithMetrics.reviewCount || 0) - Number(placeWithMetrics.localReviewCount || 0));
+  const fallbackRating =
+    audience === "local"
+      ? Number(placeWithMetrics.localRating || placeWithMetrics.rating || 0)
+      : Number(placeWithMetrics.googleRating || placeWithMetrics.rating || 0);
+  const reviewCount = filteredReviews.length || fallbackCount;
+  const rating = filteredReviews.length
+    ? filteredReviews.reduce((total, review) => total + Number(review.rating || 0), 0) / filteredReviews.length
+    : fallbackRating;
+  const sampleReview = filteredReviews[0];
+  const audienceLabel = audience === "local" ? "토박이" : "타지인";
+
+  return {
+    ...placeWithMetrics,
+    rating,
+    reviewCount,
+    ratingLabel: reviewCount ? `★ ${rating.toFixed(1)} (${formatCompactCount(reviewCount)})` : `${audienceLabel} 리뷰 없음`,
+    reviewText: sampleReview?.content || sampleReview?.text || placeWithMetrics.reviewText || placeWithMetrics.summary,
+    summary: sampleReview?.content || sampleReview?.text || placeWithMetrics.summary,
+    aiReason: `${audienceLabel} 리뷰 ${formatCompactCount(reviewCount)}개 기준`,
+  };
+}
+
+function formatCompactCount(value) {
+  const count = Number(value || 0);
+  if (count >= 10000) return `${Math.round(count / 1000) / 10}만+`;
+  if (count >= 1000) return `${Math.round(count / 100) / 10}천+`;
+  return String(Math.round(count));
 }
 
 function findDirectBusinessMatch(query, results) {
@@ -1703,6 +1948,108 @@ function ReviewComposer({ place, user, reviews, status, onSubmit }) {
   );
 }
 
+function ReviewPlaceDetailPage({ place, reviews = [], reviewStatus = "", onClose, reviewForm = null }) {
+  const rating = Number(place.rating || place.localRating || place.googleRating || 0);
+  const reviewCount = Number(place.reviewCount || place.localReviewCount || place.googleReviewCount || 0);
+
+  return h(
+    "article",
+    { className: "review-full-detail" },
+    h(
+      "header",
+      { className: "review-full-detail-header" },
+      h("button", { type: "button", className: "place-page-icon-button", "aria-label": "이전 화면", onClick: onClose }, "x"),
+      h("strong", null, place.name || "장소 상세"),
+      h("span", { "aria-hidden": "true" })
+    ),
+    h(
+      "section",
+      { className: "review-full-summary" },
+      h("p", { className: "review-full-category" }, place.categoryPath || place.categoryName || place.type || "장소"),
+      h("h1", null, place.name || "장소 상세"),
+      rating ? h("p", { className: "review-full-rating" }, `★ ${rating.toFixed(1)} (${formatCompactCount(reviewCount)})`) : null,
+      place.distance ? h("p", { className: "review-full-distance" }, `${Math.round(Number(place.distance))}m`) : null,
+      place.address ? h("p", { className: "review-full-address" }, place.address) : null,
+      place.phone ? h("p", { className: "review-full-phone" }, `전화번호 ${place.phone}`) : null
+    ),
+    h(
+      "section",
+      { className: "review-full-section" },
+      h("h2", null, "리뷰 요약"),
+      h("p", null, makeReviewDetailSummary(place, reviews))
+    ),
+    h(
+      "section",
+      { className: "review-full-section" },
+      h("h2", null, "토박이 / 타지인 반응"),
+      h(ReviewAudienceSummary, { reviews })
+    ),
+    h(
+      "section",
+      { className: "review-full-section" },
+      h("h2", null, "리뷰 목록"),
+      reviews.length
+        ? h(
+            "div",
+            { className: "review-full-list" },
+            reviews.map((review) => h(ReviewFullItem, { key: review.id, review }))
+          )
+        : h("p", { className: "place-page-empty" }, reviewStatus || "아직 표시할 리뷰가 없습니다.")
+    ),
+    reviewForm
+  );
+}
+
+function ReviewAudienceSummary({ reviews = [] }) {
+  const localStats = summarizeAudienceReviews(reviews, true);
+  const visitorStats = summarizeAudienceReviews(reviews, false);
+
+  return h(
+    "div",
+    { className: "review-audience-summary" },
+    h("div", null, h("strong", null, "토박이"), h("span", null, formatAudienceStats(localStats))),
+    h("div", null, h("strong", null, "타지인"), h("span", null, formatAudienceStats(visitorStats)))
+  );
+}
+
+function ReviewFullItem({ review }) {
+  return h(
+    "article",
+    { className: "review-full-item" },
+    h(
+      "div",
+      { className: "review-full-item-meta" },
+      h("strong", null, review.userNickname || "방문자"),
+      h("em", null, review.isLocalResident ? "토박이" : "타지인"),
+      h("b", null, `★ ${review.rating || "-"}`)
+    ),
+    h("p", null, review.content || review.text || "")
+  );
+}
+
+function makeReviewDetailSummary(place, reviews) {
+  if (reviews.length) {
+    const average = reviews.reduce((total, review) => total + Number(review.rating || 0), 0) / reviews.length;
+    const localCount = reviews.filter((review) => review.isLocalResident).length;
+    return `표시된 리뷰 ${reviews.length}개 기준 평균 ${average.toFixed(1)}점입니다. 토박이 리뷰 ${localCount}개와 타지인 리뷰 ${reviews.length - localCount}개를 함께 반영했습니다.`;
+  }
+
+  return place.reviewText || place.summary || "리뷰 기반 요약을 준비 중입니다.";
+}
+
+function summarizeAudienceReviews(reviews, isLocal) {
+  const filtered = reviews.filter((review) => Boolean(review.isLocalResident) === isLocal);
+  const average = filtered.length
+    ? filtered.reduce((total, review) => total + Number(review.rating || 0), 0) / filtered.length
+    : 0;
+
+  return { count: filtered.length, rating: average };
+}
+
+function formatAudienceStats(stats) {
+  return stats.count ? `★ ${stats.rating.toFixed(1)} (${formatCompactCount(stats.count)})` : "리뷰 없음";
+}
+
 function WrittenReview({ review }) {
   const dateLabel = new Date(review.createdAt).toLocaleDateString("ko-KR", {
     month: "2-digit",
@@ -1724,11 +2071,12 @@ function WrittenReview({ review }) {
   );
 }
 
-function ReviewHistoryList({ history, onSelect }) {
+function ReviewHistoryList({ history, onSelect, onRemove }) {
   return h(
     "section",
     { className: "review-history", "aria-label": "검색 기록" },
-    history.map((item) =>
+    history.length
+      ? history.map((item) =>
       h(
         "button",
         {
@@ -1739,7 +2087,44 @@ function ReviewHistoryList({ history, onSelect }) {
         },
         h("span", null, item.keyword),
         h("time", null, item.date),
-        h("span", { className: "history-remove", "aria-hidden": "true" }, "\u00d7")
+        h(
+          "span",
+          {
+            className: "history-remove",
+            "aria-label": "검색 기록 삭제",
+            role: "button",
+            onClick: (event) => {
+              event.stopPropagation();
+              onRemove?.(item);
+            },
+          },
+          "\u00d7"
+        )
+      )
+    )
+      : h("p", { className: "review-status" }, "아직 검색 기록이 없습니다.")
+  );
+}
+
+function ReviewAudienceTabs({ activeFilter, onSelect }) {
+  const tabs = [
+    { id: "local", label: "토박이" },
+    { id: "visitor", label: "타지인" },
+  ];
+
+  return h(
+    "div",
+    { className: "review-filters", "aria-label": "리뷰 작성자 유형" },
+    tabs.map((tab) =>
+      h(
+        "button",
+        {
+          key: tab.id,
+          className: tab.id === activeFilter ? "review-filter active" : "review-filter",
+          type: "button",
+          onClick: () => onSelect(tab.id),
+        },
+        tab.label
       )
     )
   );
