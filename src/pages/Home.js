@@ -35,6 +35,12 @@ const navItems = [
   { id: "map", label: "지도", icon: "foldedMap" },
 ];
 
+const bottomNavLabels = {
+  audio: "오디오북",
+  review: "리뷰",
+  map: "지도 및 경로",
+};
+
 const audioOptions = [
   { label: "현재 지역", tone: "warm" },
   { label: "목적지", tone: "green" },
@@ -2926,19 +2932,22 @@ function BottomNav({ activeId, onSelect }) {
   return h(
     "nav",
     { className: "bottom-nav", "aria-label": "하단 메뉴" },
-    navItems.map((item) =>
-      h(
+    navItems.map((item) => {
+      const label = bottomNavLabels[item.id] || item.label;
+
+      return h(
         "button",
         {
           key: item.id,
           className: item.id === activeId ? "active" : "",
           type: "button",
-          "aria-label": item.label,
+          "aria-label": label,
           onClick: () => onSelect(item.id),
         },
-        h(Icon, { name: item.icon })
-      )
-    )
+        h(Icon, { name: item.icon }),
+        h("span", { className: "bottom-nav-label" }, label)
+      );
+    })
   );
 }
 
