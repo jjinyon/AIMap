@@ -26,7 +26,7 @@ import {
   stopAudio as stopSpeechAudio,
 } from "../services/audio/ttsService.js";
 
-const { useEffect, useRef, useState } = window.React;
+const { useCallback, useEffect, useMemo, useRef, useState } = window.React;
 const h = window.React.createElement;
 
 const navItems = [
@@ -496,35 +496,58 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     }
   }, [hasResolvedLocation, location, mapCenter]);
   const hasDestination = Boolean(selectedPlace);
-  const savedPlaceIds = new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id));
+  const savedPlaceIds = useMemo(
+    () => new Set(savedPlaces.map((place) => place.kakaoPlaceId || place.id)),
+    [savedPlaces]
+  );
   const isDestinationSaved = selectedPlace ? isPlaceSaved(selectedPlace, savedPlaces) : false;
-  const destinationRecommendedMapPlaces = destinationRecommendedPlaces.map((place) => ({
-    ...place,
-    markerKind: "recommended",
-    reason: place.aiReason || place.summary || place.address || "",
-  }));
-  const recommendedMapPlaces = recommendationMode
-    ? recommendedPlaces.map((place) => ({
+  const destinationRecommendedMapPlaces = useMemo(
+    () =>
+      destinationRecommendedPlaces.map((place) => ({
         ...place,
         markerKind: "recommended",
         reason: place.aiReason || place.summary || place.address || "",
-      }))
-    : [];
-  const savedMapPlaces = showSavedPlaces
-    ? savedPlaces.map((place) => ({
-        ...place,
-        markerKind: "saved",
-        reason: "저장한 장소입니다.",
-      }))
-    : [];
-  const visibleMapPlaces = hasDestination
-    ? routeModeActive
-      ? []
-      : selectedLocalRoute
-      ? []
-      : destinationRecommendedMapPlaces
-    : [...recommendedMapPlaces, ...savedMapPlaces];
-  const selectedRoutePlaces = selectedLocalRoute?.places || [];
+      })),
+    [destinationRecommendedPlaces]
+  );
+  const recommendedMapPlaces = useMemo(
+    () =>
+      recommendationMode
+        ? recommendedPlaces.map((place) => ({
+            ...place,
+            markerKind: "recommended",
+            reason: place.aiReason || place.summary || place.address || "",
+          }))
+        : [],
+    [recommendationMode, recommendedPlaces]
+  );
+  const savedMapPlaces = useMemo(
+    () =>
+      showSavedPlaces
+        ? savedPlaces.map((place) => ({
+            ...place,
+            markerKind: "saved",
+            reason: "저장한 장소입니다.",
+          }))
+        : [],
+    [showSavedPlaces, savedPlaces]
+  );
+  const visibleMapPlaces = useMemo(() => {
+    if (hasDestination) {
+      if (routeModeActive || selectedLocalRoute) return [];
+      return destinationRecommendedMapPlaces;
+    }
+
+    return [...recommendedMapPlaces, ...savedMapPlaces];
+  }, [
+    destinationRecommendedMapPlaces,
+    hasDestination,
+    recommendedMapPlaces,
+    routeModeActive,
+    savedMapPlaces,
+    selectedLocalRoute,
+  ]);
+  const selectedRoutePlaces = useMemo(() => selectedLocalRoute?.places || [], [selectedLocalRoute]);
 
   useEffect(() => {
     onBackStateChange?.(
@@ -682,7 +705,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     };
   }, [selectedPlace?.id]);
 
-  const selectDestination = (destination) => {
+  const selectDestination = useCallback((destination) => {
     const destinationWithReviewMetrics = formatRecommendedPlace(destination);
     setSelectedPlace(destinationWithReviewMetrics);
     setDestinationReviews([]);
@@ -696,7 +719,11 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     setActiveRouteOption("");
     setRouteStatus("경로 옵션을 선택해 주세요.");
     setSaveStatus("");
-  };
+  }, []);
+
+  const stopTrackingLocation = useCallback(() => {
+    setIsTrackingLocation(false);
+  }, []);
 
   const closeDestinationDetail = () => {
     setIsTrackingLocation(false);
@@ -934,7 +961,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       routePath,
       routeSegments,
       isTrackingLocation,
-      onTrackingChange: () => setIsTrackingLocation(false),
+      onTrackingChange: stopTrackingLocation,
       onMapCenterChange: (center) => {
         if (!center) return;
         if (mapCenter?.lat === center.lat && mapCenter?.lng === center.lng) return;
