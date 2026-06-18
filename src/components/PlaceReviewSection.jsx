@@ -22,8 +22,9 @@ export function PlaceReviewSection({ reviews = [], status = "", reviewForm = nul
                 "div",
                 { className: "place-review-meta" },
                 h("strong", null, review.userNickname || "사용자"),
+                review.isLocalResident ? h("em", { className: "local-resident-badge" }, "토박이") : null,
                 h("span", null, review.createdAt ? new Date(review.createdAt).toLocaleDateString("ko-KR") : ""),
-                h("b", null, `★ ${review.rating || "-"}`)
+                h("b", null, `★${review.rating || "-"}`)
               ),
               h("p", null, review.content || review.text || "")
             )
@@ -39,5 +40,8 @@ function summarizeReviews(reviews = []) {
 
   const average =
     reviews.reduce((total, review) => total + Number(review.rating || 0), 0) / Math.max(1, reviews.length);
-  return `${reviews.length}개의 리뷰 기준 평균 평점은 ${average.toFixed(1)}점입니다. 방문 후기가 더 쌓이면 분위기와 장단점을 더 자세히 요약할 수 있습니다.`;
+  const localCount = reviews.filter((review) => review.isLocalResident).length;
+  const localText = localCount ? ` 토박이 리뷰 ${localCount}개가 포함되어 있습니다.` : "";
+
+  return `${reviews.length}개의 리뷰 기준 평균 평점은 ${average.toFixed(1)}점입니다.${localText}`;
 }

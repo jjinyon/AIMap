@@ -832,14 +832,15 @@ button {
 
 .place-review-meta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 6px;
   align-items: center;
 }
 
 .place-review-meta strong,
 .place-review-meta span,
-.place-review-meta b {
+.place-review-meta b,
+.place-review-meta .local-resident-badge {
   overflow: hidden;
   font-size: 0.55rem;
   font-weight: 900;
@@ -853,6 +854,19 @@ button {
 
 .place-review-meta b {
   color: #f0ad30;
+}
+
+.place-review-meta .local-resident-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e7f7ed;
+  color: #16834d;
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 950;
 }
 
 .place-recommendation-list {
@@ -1180,7 +1194,15 @@ button {
   font-weight: 950;
 }
 
+.place-page-section strong {
+  color: #22251f;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1.4;
+}
+
 .place-page-section p,
+.place-story-review-list,
 .place-page-muted,
 .place-page-empty {
   margin: 0;
@@ -1193,6 +1215,12 @@ button {
 .place-page-muted,
 .place-page-empty {
   color: #77766f;
+}
+
+.place-story-review-list {
+  display: grid;
+  gap: 4px;
+  padding-left: 16px;
 }
 
 .route-bottom-sheet {

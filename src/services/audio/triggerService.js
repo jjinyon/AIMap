@@ -31,8 +31,7 @@ export async function loadCurrentPlaceAudioStories(location, context = {}, optio
 
   return getAudioEpisodesFromStoryCards({
     location: enrichedLocation,
-    place: selectedPlace,
-    context: { ...context, location: enrichedLocation, place: selectedPlace, regionHints },
+    context: { ...context, location: enrichedLocation, nearbyStoryPlace: selectedPlace, regionHints },
   });
 }
 

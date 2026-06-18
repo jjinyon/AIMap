@@ -52,7 +52,11 @@ export function Home({ appStatus }) {
   const [authUser, setAuthUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [screen, setScreen] = useState("auth");
-  const [previousScreen, setPreviousScreen] = useState(null);
+  const [screenHistory, setScreenHistory] = useState([]);
+  const [mapCanGoBack, setMapCanGoBack] = useState(false);
+  const [mapBackSignal, setMapBackSignal] = useState(0);
+  const [audioCanGoBack, setAudioCanGoBack] = useState(false);
+  const [audioBackSignal, setAudioBackSignal] = useState(0);
   const [reviewCanGoBack, setReviewCanGoBack] = useState(false);
   const [reviewBackSignal, setReviewBackSignal] = useState(0);
 
@@ -66,7 +70,7 @@ export function Home({ appStatus }) {
 
         setAuthUser(user);
         setScreen("map");
-        setPreviousScreen(null);
+        setScreenHistory([]);
       } catch {
         if (ignore) return;
 
@@ -87,20 +91,20 @@ export function Home({ appStatus }) {
   const completeAuth = (user) => {
     setAuthUser(user);
     setScreen("map");
-    setPreviousScreen(null);
+    setScreenHistory([]);
   };
 
   const logout = async () => {
     await logoutUser();
     setAuthUser(null);
     setScreen("auth");
-    setPreviousScreen(null);
+    setScreenHistory([]);
   };
 
   const navigateTo = (nextScreen) => {
     if (nextScreen === screen) return;
 
-    setPreviousScreen(screen);
+    setScreenHistory((history) => [...history, screen].slice(-12));
     setScreen(nextScreen);
   };
 
@@ -133,17 +137,29 @@ export function Home({ appStatus }) {
   const goBack = () => {
     if (!authUser || isAuthLoading) return;
 
+    if (screen === "map" && mapCanGoBack) {
+      setMapBackSignal((signal) => signal + 1);
+      return;
+    }
+
+    if (screen === "audio" && audioCanGoBack) {
+      setAudioBackSignal((signal) => signal + 1);
+      return;
+    }
+
     if (screen === "review" && reviewCanGoBack) {
       setReviewBackSignal((signal) => signal + 1);
       return;
     }
 
-    const fallbackScreen = screen === "review" ? "map" : "review";
-    setScreen(previousScreen || fallbackScreen);
-    setPreviousScreen(null);
+    const previous = screenHistory[screenHistory.length - 1] || "map";
+    setScreenHistory((history) => history.slice(0, -1));
+    setScreen(previous);
   };
 
   useEffect(() => {
+    if (screen !== "map") setMapCanGoBack(false);
+    if (screen !== "audio") setAudioCanGoBack(false);
     if (screen !== "review") setReviewCanGoBack(false);
   }, [screen]);
 
@@ -170,6 +186,10 @@ export function Home({ appStatus }) {
           onAuthenticated: completeAuth,
           onLogout: logout,
           setScreen: navigateTo,
+          mapBackSignal,
+          onMapBackStateChange: setMapCanGoBack,
+          audioBackSignal,
+          onAudioBackStateChange: setAudioCanGoBack,
           reviewBackSignal,
           onReviewBackStateChange: setReviewCanGoBack,
         }),
@@ -191,7 +211,7 @@ export function Home({ appStatus }) {
   );
 }
 
-function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, locationStatus, onRequestLocation, onAuthenticated, onLogout, setScreen, reviewBackSignal, onReviewBackStateChange }) {
+function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, locationStatus, onRequestLocation, onAuthenticated, onLogout, setScreen, mapBackSignal, onMapBackStateChange, audioBackSignal, onAudioBackStateChange, reviewBackSignal, onReviewBackStateChange }) {
   if (isAuthLoading) {
     return h(LoadingScreen);
   }
@@ -202,11 +222,11 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, lo
 
   const hasResolvedLocation = Boolean(location?.lat && location?.lng && !location.isFallback);
   if (!hasResolvedLocation && ["audio", "review", "map"].includes(screen)) {
-    return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser });
+    return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser, backSignal: mapBackSignal, onBackStateChange: onMapBackStateChange });
   }
 
   if (screen === "audio") {
-    return h(AudioScreen, { location, user: authUser });
+    return h(AudioScreen, { location, user: authUser, backSignal: audioBackSignal, onBackStateChange: onAudioBackStateChange });
   }
 
   if (screen === "settings") {
@@ -229,7 +249,7 @@ function renderScreen(screen, { appStatus, authUser, isAuthLoading, location, lo
     });
   }
 
-  return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser });
+  return h(MapScreen, { location, locationStatus, onRequestLocation, appStatus, user: authUser, backSignal: mapBackSignal, onBackStateChange: onMapBackStateChange });
 }
 
 function getScreenTitle(screen) {
@@ -321,12 +341,14 @@ function buildLocalRoutes(candidatePlaces, location, destination, user) {
   });
 }
 
-function MapScreen({ location, locationStatus, onRequestLocation, appStatus, user }) {
+function MapScreen({ location, locationStatus, onRequestLocation, appStatus, user, backSignal = 0, onBackStateChange }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [destinationRecommendedPlaces, setDestinationRecommendedPlaces] = useState([]);
   const [destinationRecommendationStatus, setDestinationRecommendationStatus] = useState("");
+  const [destinationReviews, setDestinationReviews] = useState([]);
+  const [destinationReviewStatus, setDestinationReviewStatus] = useState("");
   const [routePath, setRoutePath] = useState([]);
   const [routeSegments, setRouteSegments] = useState([]);
   const [routeStatus, setRouteStatus] = useState("");
@@ -349,6 +371,7 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [bottomSheetState, setBottomSheetState] = useState("collapsed");
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces());
+  const lastBackSignalRef = useRef(backSignal);
   const hasResolvedLocation = Boolean(location?.lat && location?.lng && !location.isFallback);
 
   useEffect(() => {
@@ -386,6 +409,49 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       : destinationRecommendedMapPlaces
     : [...recommendedMapPlaces, ...savedMapPlaces];
   const selectedRoutePlaces = selectedLocalRoute?.places || [];
+
+  useEffect(() => {
+    onBackStateChange?.(
+      Boolean(routeSheetOpen || routeModeActive || selectedPlace || showSearchResults || query.trim())
+    );
+  }, [onBackStateChange, query, routeModeActive, routeSheetOpen, selectedPlace, showSearchResults]);
+
+  useEffect(() => {
+    if (lastBackSignalRef.current === backSignal) return;
+
+    lastBackSignalRef.current = backSignal;
+
+    if (routeSheetOpen) {
+      setRouteSheetOpen(false);
+      return;
+    }
+
+    if (routeModeActive) {
+      setRouteModeActive(false);
+      setRoutePath([]);
+      setRouteSegments([]);
+      setActiveRouteOption("");
+      setRouteStatus("");
+      closeLocalRoutes();
+      return;
+    }
+
+    if (selectedPlace) {
+      closeDestinationDetail();
+      return;
+    }
+
+    if (showSearchResults) {
+      closeSearchResults();
+      return;
+    }
+
+    if (query.trim()) {
+      setQuery("");
+      setSearchStatus("");
+      setSearchResults([]);
+    }
+  }, [backSignal, query, routeModeActive, routeSheetOpen, selectedPlace, showSearchResults]);
 
   useEffect(() => {
     let ignore = false;
@@ -466,8 +532,43 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     };
   }, [selectedPlace?.id, selectedPlace?.lat, selectedPlace?.lng, user?.id]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadDestinationReviews() {
+      if (!selectedPlace?.id) {
+        setDestinationReviews([]);
+        setDestinationReviewStatus("");
+        return;
+      }
+
+      setDestinationReviewStatus("리뷰를 불러오는 중입니다.");
+
+      try {
+        const { reviews } = await fetchPlaceReviews(selectedPlace.id);
+        if (ignore) return;
+
+        setDestinationReviews(reviews || []);
+        setDestinationReviewStatus("");
+      } catch (error) {
+        if (!ignore) {
+          setDestinationReviews([]);
+          setDestinationReviewStatus(error.message);
+        }
+      }
+    }
+
+    loadDestinationReviews();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedPlace?.id]);
+
   const selectDestination = (destination) => {
     setSelectedPlace(destination);
+    setDestinationReviews([]);
+    setDestinationReviewStatus("");
     setMapCenter({ lat: destination.lat, lng: destination.lng });
     setBottomSheetState("collapsed");
     closeLocalRoutes();
@@ -484,6 +585,8 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     setSelectedPlace(null);
     setDestinationRecommendedPlaces([]);
     setDestinationRecommendationStatus("");
+    setDestinationReviews([]);
+    setDestinationReviewStatus("");
     setRoutePath([]);
     setRouteSegments([]);
     setRouteStatus("");
@@ -751,6 +854,8 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
         ? h(PlaceDetailPage, {
             place: selectedPlace,
             location,
+            reviews: destinationReviews,
+            reviewStatus: destinationReviewStatus,
             recommendedPlaces: destinationRecommendedPlaces,
             routeStatus,
             nearbyStatus: destinationRecommendationStatus,
@@ -824,12 +929,13 @@ function LocationRequiredPanel({ status, onRequestLocation }) {
   );
 }
 
-function AudioScreen({ location, user }) {
+function AudioScreen({ location, user, backSignal = 0, onBackStateChange }) {
   const [episodes, setEpisodes] = useState([]);
   const [selectedEpisode, setSelectedEpisode] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(true);
   const [status, setStatus] = useState("");
+  const lastBackSignalRef = useRef(backSignal);
   const locationLabel = location?.label || "\uD604\uC7AC \uC704\uCE58";
   const visibleGenres = audioGenreFilters.filter((genre) =>
     episodes.some((episode) => episode.genre === genre)
@@ -841,6 +947,17 @@ function AudioScreen({ location, user }) {
       stopAudio();
     };
   }, []);
+
+  useEffect(() => {
+    onBackStateChange?.(Boolean(selectedEpisode));
+  }, [onBackStateChange, selectedEpisode]);
+
+  useEffect(() => {
+    if (lastBackSignalRef.current === backSignal) return;
+
+    lastBackSignalRef.current = backSignal;
+    if (selectedEpisode) closeDetail();
+  }, [backSignal, selectedEpisode]);
 
   useEffect(() => {
     let ignore = false;
@@ -1381,8 +1498,8 @@ function WrittenReview({ review }) {
       { className: "written-review-meta" },
       h("strong", null, review.userNickname),
       h("span", null, review.userCity ? `${review.userCity} ? ${dateLabel}` : dateLabel),
-      review.isLocalResident ? h("em", { className: "local-resident-badge" }, "\uC9C0\uC5ED \uC8FC\uBBFC \uB9AC\uBDF0") : null,
-      h("b", null, `? ${review.rating}`)
+      review.isLocalResident ? h("em", { className: "local-resident-badge" }, "토박이") : null,
+      h("b", null, `★${review.rating}`)
     ),
     h("p", null, review.content)
   );

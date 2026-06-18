@@ -1,3 +1,5 @@
+import { isNearKyunghee, kyungheeMockPlaces } from "../data/kyungheeReviewMockData.js";
+
 export async function searchPlaces(query, location) {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
@@ -40,24 +42,38 @@ const nearbyCategoryCodes = ["FD6", "CE7", "AT4", "CT1"];
 export async function fetchNearbyReviewPlaces(location) {
   if (!location?.lat || !location?.lng) return [];
 
-  await waitForKakaoMaps();
+  const kyungheePlaces = isNearKyunghee(location) ? makeKyungheePlacesForLocation(location) : [];
+
+  try {
+    await waitForKakaoMaps();
+  } catch (error) {
+    if (kyungheePlaces.length) return kyungheePlaces;
+    throw error;
+  }
 
   const results = await Promise.all(
-    nearbyCategoryCodes.map((code) => searchNearbyCategory(code, location))
+    nearbyCategoryCodes.map((code) => searchNearbyCategory(code, location).catch(() => []))
   );
 
-  return sortNearbyPlaces(dedupePlaces(results.flat()))
+  return sortNearbyPlaces(dedupePlaces([...kyungheePlaces, ...results.flat()]))
     .slice(0, 10)
     .map((place, index) => ({
       ...place,
       kakaoPlaceId: place.id,
-      id: `nearby-review-${place.id || index}`,
+      id: place.id?.startsWith("kyunghee-place-") ? place.id : `nearby-review-${place.id || index}`,
       ratingLabel: place.distance ? `${place.distance}m` : "주변",
       summary: makePlaceSummary(place),
       aiReason: makePlaceReason(place),
       reviewText: makePlaceDescription(place),
       description: makePlaceDescription(place),
     }));
+}
+
+function makeKyungheePlacesForLocation(location) {
+  return kyungheeMockPlaces.map((place) => ({
+    ...place,
+    distance: Math.round(getDistanceKm(location, place) * 1000),
+  }));
 }
 
 function searchNearbyCategory(categoryCode, location) {
@@ -145,6 +161,23 @@ function makePlaceDescription(place) {
   ].filter(Boolean);
 
   return parts.join(" ");
+}
+
+function getDistanceKm(a, b) {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(Number(b.lat) - Number(a.lat));
+  const dLng = toRadians(Number(b.lng) - Number(a.lng));
+  const lat1 = toRadians(Number(a.lat));
+  const lat2 = toRadians(Number(b.lat));
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
+}
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
 }
 
 function waitForKakaoMaps() {

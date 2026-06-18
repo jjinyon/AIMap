@@ -1,8 +1,16 @@
+import { getKyungheeMockReviews, getKyungheeMockReviewStats } from "../data/kyungheeReviewMockData.js";
+
 export async function fetchPlaceReviews(placeId) {
   const params = new URLSearchParams({ placeId });
-  return requestReview(`/api/reviews?${params.toString()}`, {
+  const payload = await requestReview(`/api/reviews?${params.toString()}`, {
     method: "GET",
   });
+  const mockReviews = getKyungheeMockReviews(placeId);
+
+  return {
+    ...payload,
+    reviews: mergeReviews(payload.reviews || [], mockReviews),
+  };
 }
 
 export async function createPlaceReview({ placeId, placeName, placeAddress = "", rating, content }) {
@@ -28,7 +36,37 @@ export async function fetchLocalReviewStats(placeIds, options = {}) {
     throw new Error(payload.message || "Failed to load local review stats.");
   }
 
-  return payload.statsByPlaceId || {};
+  return mergeReviewStats(payload.statsByPlaceId || {}, getKyungheeMockReviewStats(ids));
+}
+
+function mergeReviews(realReviews = [], mockReviews = []) {
+  const seen = new Set(realReviews.map((review) => review.id));
+  return [...realReviews, ...mockReviews.filter((review) => !seen.has(review.id))];
+}
+
+function mergeReviewStats(realStats = {}, mockStats = {}) {
+  const merged = { ...realStats };
+
+  Object.entries(mockStats).forEach(([placeId, stats]) => {
+    if (!merged[placeId]) {
+      merged[placeId] = stats;
+      return;
+    }
+
+    const realReviewCount = Number(merged[placeId].reviewCount || 0);
+    const mockReviewCount = Number(stats.reviewCount || 0);
+    const totalReviewCount = realReviewCount + mockReviewCount;
+    const ratingTotal = Number(merged[placeId].rating || 0) * realReviewCount + Number(stats.rating || 0) * mockReviewCount;
+
+    merged[placeId] = {
+      ...merged[placeId],
+      rating: totalReviewCount ? Math.round((ratingTotal / totalReviewCount) * 10) / 10 : 0,
+      reviewCount: totalReviewCount,
+      localReviewCount: Number(merged[placeId].localReviewCount || 0) + Number(stats.localReviewCount || 0),
+    };
+  });
+
+  return merged;
 }
 
 async function requestReview(path, options) {

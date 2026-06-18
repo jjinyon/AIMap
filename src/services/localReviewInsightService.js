@@ -74,10 +74,30 @@ export function extractNeighborhood(address = "") {
 }
 
 export function isAdjacentNeighborhood(userNeighborhood = "", placeAddress = "") {
-  const userDong = extractNeighborhood(userNeighborhood) || String(userNeighborhood || "").trim();
-  const placeDong = extractNeighborhood(placeAddress);
+  const userArea = parseLocalArea(userNeighborhood);
+  const placeArea = parseLocalArea(placeAddress);
 
-  return Boolean(userDong && placeDong && userDong === placeDong);
+  if (userArea.neighborhood && placeArea.neighborhood && userArea.neighborhood === placeArea.neighborhood) {
+    return true;
+  }
+
+  return Boolean(
+    userArea.district &&
+      placeArea.district &&
+      userArea.district === placeArea.district &&
+      (!userArea.province || !placeArea.province || userArea.province === placeArea.province)
+  );
+}
+
+function parseLocalArea(value = "") {
+  const tokens = String(value).split(/\s+/).filter(Boolean);
+  const district = tokens.find((token) => /구$|군$/.test(token)) || tokens.find((token) => /시$/.test(token) && !/특별시$|광역시$|특별자치시$/.test(token)) || "";
+
+  return {
+    province: tokens.find((token) => /도$|특별시$|광역시$|특별자치시$|특별자치도$/.test(token)) || "",
+    district,
+    neighborhood: [...tokens].reverse().find((token) => /동$|읍$|면$|리$|가$/.test(token)) || "",
+  };
 }
 
 function isReviewablePlace(place = {}) {
