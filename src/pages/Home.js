@@ -18,8 +18,10 @@ import { cityOptions } from "../services/userProfileService.js";
 import {
   canSpeak,
   isPaused,
+  loadVoices,
   pauseAudio,
   resumeAudio,
+  selectNarrationVoice,
   speakStory,
   stopAudio as stopSpeechAudio,
 } from "../services/audio/ttsService.js";
@@ -801,42 +803,23 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
     setRouteStatus("최단 경로 주변의 추천 장소를 찾는 중입니다.");
 
     try {
-      let candidatePlaces = recommendedPlaces;
+      let baseRoute = null;
 
       if (hasDestination) {
-        const baseRoute = await findRoute(location, selectedPlace);
-        setRoutePath(baseRoute.points);
-        setRouteSegments(baseRoute.segments || []);
-
-        const samplePoints = sampleRouteCorridor(baseRoute.points);
-        const nearbyGroups = await Promise.all(
-          samplePoints.map((point) => fetchNearbyReviewPlaces(point).catch(() => []))
-        );
-        const corridorPlaces = dedupeCandidatePlaces(nearbyGroups.flat(), selectedPlace);
-
-        if (corridorPlaces.length) {
-          const recommendedCorridorPlaces = await recommendKakaoPlacesWithReviewData(
-            corridorPlaces,
-            { userLocation: location, userPreference: user?.preferences },
-            { limit: 14, metricsLimit: 14 }
-          );
-          candidatePlaces = recommendedCorridorPlaces.map(formatRecommendedPlace);
-        } else {
-          candidatePlaces = destinationRecommendedPlaces;
+        try {
+          baseRoute = await findRoute(location, selectedPlace);
+          setRoutePath(baseRoute.points);
+          setRouteSegments(baseRoute.segments || []);
+        } catch {
+          setRoutePath([]);
+          setRouteSegments([]);
         }
       }
 
+      const candidatePlaces = await loadLocalRouteCandidatePlaces(baseRoute);
       setRouteStatus("지역 만끽 경로를 추천하는 중입니다.");
 
       let routes = buildLocalRoutes(candidatePlaces, location, hasDestination ? selectedPlace : undefined, user);
-
-      if (!routes.length && hasDestination && candidatePlaces !== destinationRecommendedPlaces) {
-        const fallbackCandidatePlaces = dedupeCandidatePlaces(
-          [...candidatePlaces, ...destinationRecommendedPlaces],
-          selectedPlace
-        );
-        routes = buildLocalRoutes(fallbackCandidatePlaces, location, selectedPlace, user);
-      }
 
       setLocalRoutes(routes);
       if (!routes.length) {
@@ -850,6 +833,37 @@ function MapScreen({ location, locationStatus, onRequestLocation, appStatus, use
       setLocalRoutes([]);
       setRouteStatus("추천 경로를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
+  };
+
+  const loadLocalRouteCandidatePlaces = async (baseRoute = null) => {
+    const seedPlaces = [...recommendedPlaces, ...destinationRecommendedPlaces];
+    const samplePoints = hasDestination && baseRoute?.points?.length ? sampleRouteCorridor(baseRoute.points, 4) : [];
+    const lookupPoints = [
+      location,
+      hasDestination ? selectedPlace : null,
+      ...samplePoints,
+    ].filter((point) => point?.lat && point?.lng);
+
+    const nearbyGroups = await Promise.all(
+      lookupPoints.map((point) =>
+        fetchNearbyReviewPlaces(point, {
+          radius: 1800,
+          limit: 18,
+          pageCount: 2,
+          size: 12,
+        }).catch(() => [])
+      )
+    );
+    const rawCandidates = dedupeCandidatePlaces([...seedPlaces, ...nearbyGroups.flat()], selectedPlace);
+    if (!rawCandidates.length) return [];
+
+    const recommendedCandidates = await recommendKakaoPlacesWithReviewData(
+      rawCandidates,
+      { userLocation: location, userPreference: user?.preferences },
+      { limit: 24, metricsLimit: 18 }
+    ).catch(() => rawCandidates);
+
+    return dedupeCandidatePlaces(recommendedCandidates.map(formatRecommendedPlace), selectedPlace);
   };
 
   const submitSearch = async () => {
@@ -1062,6 +1076,10 @@ function AudioScreen({ location, user, backSignal = 0, onBackStateChange }) {
     return () => {
       stopAudio();
     };
+  }, []);
+
+  useEffect(() => {
+    loadVoices().then(() => selectNarrationVoice());
   }, []);
 
   useEffect(() => {

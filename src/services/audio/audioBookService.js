@@ -42,6 +42,7 @@ export function toAudioEpisode(card = {}, index = 0) {
     genre: CARD_GENRE_LABELS[card.type] || "이야기",
     tone: getTone(card.type, index),
     script: card.script || "",
+    narrationScript: card.narrationScript || card.script || "",
     sourceName: card.sourceName || card.sourceType || "AIMap",
     sourceUrl: card.sourceUrl || "",
     storySource: card.sourceType,

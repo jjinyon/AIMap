@@ -464,13 +464,13 @@ function generateFallbackRouteCandidates(candidatePlaces = [], options = {}) {
   const minPlaces = Math.min(routeOptions.minPlaces, places.length);
   const routeSize = Math.min(routeOptions.maxPlaces, places.length);
 
-  if (places.length < 2 || minPlaces < 2 || !foodPlaces.length) return [];
+  if (places.length < 2 || minPlaces < 2) return [];
 
   const routes = [];
   for (let offset = 0; offset < places.length && routes.length < routeOptions.maxRoutes; offset += 1) {
     const selected = selectDiversePlaces(places.slice(offset).concat(places.slice(0, offset)), routeSize);
-    const route = ensureFoodPlace(selected, foodPlaces, routeSize);
-    if (route.length >= minPlaces && hasFoodCategory(route)) {
+    const route = foodPlaces.length ? ensureFoodPlace(selected, foodPlaces, routeSize) : selected;
+    if (route.length >= minPlaces) {
       routes.push(normalizeRouteOrder(route, routeOptions));
     }
   }

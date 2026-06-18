@@ -7,12 +7,14 @@ export async function loadCurrentPlaceAudioStories(location, context = {}, optio
 
   const kakaoPlaces = await fetchNearbyReviewPlaces(location).catch(() => []);
   const enrichedLocation = enrichLocationWithNearbyPlaces(location, kakaoPlaces);
-  const regionHints = makeRegionHints(enrichedLocation, kakaoPlaces);
+  const knownArea = findKnownArea(enrichedLocation);
+  const regionHints = makeRegionHints(enrichedLocation, kakaoPlaces, knownArea);
 
   if (!kakaoPlaces.length) {
     return getAudioEpisodesFromStoryCards({
-      location: enrichedLocation,
-      context: { ...context, location: enrichedLocation, regionHints },
+      location: knownArea ? { ...enrichedLocation, address: knownArea.address, regionName: knownArea.name } : enrichedLocation,
+      place: knownArea,
+      context: { ...context, location: enrichedLocation, nearbyStoryPlace: knownArea, regionHints },
     });
   }
 
@@ -30,7 +32,8 @@ export async function loadCurrentPlaceAudioStories(location, context = {}, optio
   const selectedPlace = storyPlaces.find((place) => place?.name) || null;
 
   return getAudioEpisodesFromStoryCards({
-    location: enrichedLocation,
+    location: knownArea ? { ...enrichedLocation, address: knownArea.address, regionName: knownArea.name } : enrichedLocation,
+    place: knownArea || selectedPlace,
     context: { ...context, location: enrichedLocation, nearbyStoryPlace: selectedPlace, regionHints },
   });
 }
@@ -49,8 +52,8 @@ function enrichLocationWithNearbyPlaces(location = {}, places = []) {
   };
 }
 
-function makeRegionHints(location = {}, places = []) {
-  const hints = [location.label, location.address, location.regionName];
+function makeRegionHints(location = {}, places = [], knownArea = null) {
+  const hints = [knownArea?.name, knownArea?.address, location.label, location.address, location.regionName];
 
   places.slice(0, 8).forEach((place) => {
     hints.push(place.name, place.address, place.categoryName, place.categoryPath, place.type);
@@ -68,7 +71,7 @@ function buildStoryPlaces(location, places = []) {
     .filter((place) => place?.name)
     .sort((a, b) => Number(a.distance || 0) - Number(b.distance || 0))[0];
 
-  return dedupePlaces([nearestPlace, ...localPlaces, knownArea, makeCurrentLocationPlace(location)].filter(Boolean));
+  return dedupePlaces([knownArea, nearestPlace, ...localPlaces, makeCurrentLocationPlace(location)].filter(Boolean));
 }
 
 function makeCurrentLocationPlace(location) {

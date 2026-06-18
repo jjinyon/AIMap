@@ -13,10 +13,13 @@ const STORY_QUERY_RULES = [
 const MAX_DYNAMIC_CARDS = 4;
 
 export async function getRegionStories(location = {}, options = {}) {
+  const localStories = getMockRegionStories(location, options);
+  if (localStories.length) return localStories;
+
   const dynamicStories = await getExternalRegionStories(location, options);
   if (dynamicStories.length) return dynamicStories;
 
-  return getMockRegionStories(location, options);
+  return [];
 }
 
 export function getMockRegionStories(location = {}, options = {}) {
@@ -152,7 +155,7 @@ function makeDynamicTitle(candidate, rule, sourceTitle = "") {
 function extractAddressCandidates(text = "") {
   const tokens = String(text)
     .split(/[\s,()·|>]+/)
-    .map((token) => token.replace(/[^\w가-힣-]/g, ""))
+    .map((token) => token.replace(/[^\w가-힣]/g, ""))
     .filter(Boolean);
   const candidates = [];
 
@@ -170,7 +173,7 @@ function extractAddressCandidates(text = "") {
 function extractPlaceNameCandidates(hints = []) {
   return hints
     .map((hint) => String(hint).trim())
-    .filter((hint) => /궁|성|문|정|루|연|사|절|향교|서원|고택|문화재|유적|박물관|마을|거리/.test(hint))
+    .filter((hint) => /경희|국제캠퍼스|캠퍼스|대학교|용인|기흥|영통|공원|문화|유적|박물관|마을|거리/.test(hint))
     .map((hint) => hint.split(/[\s,|>]+/).slice(0, 3).join(" "));
 }
 
@@ -230,6 +233,6 @@ function safeId(value = "") {
   return String(value || "region")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9가-힣_-]+/g, "-")
+    .replace(/[^a-z0-9가-힣-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
