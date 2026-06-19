@@ -50,7 +50,6 @@ const audioOptions = [
 const routeOptions = [
   { id: "fast", label: "빠르게" },
   { id: "local", label: "지역 만끽" },
-  { id: "personal", label: "퍼스널" },
 ];
 
 const koreaCityOptions = cityOptions;
