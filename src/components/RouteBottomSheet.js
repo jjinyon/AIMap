@@ -143,10 +143,60 @@ function RouteList({ routes, status, onSelectRoute, onClose }) {
 
 function RouteDetail({ route, location, destination, routePath = [], routeSegments = [], onClose, onBackToList }) {
   const places = route?.places || [];
+  const layoutRef = useRef(null);
+  const detailPanelRef = useRef(null);
+  const resizeRef = useRef({ dragging: false, startY: 0, startHeight: 0 });
+  const [detailPanelHeight, setDetailPanelHeight] = useState(null);
+
+  useEffect(() => {
+    setDetailPanelHeight(null);
+  }, [route?.id]);
+
+  const resizeDetailPanel = (nextHeight) => {
+    const layoutHeight = layoutRef.current?.clientHeight || window.innerHeight;
+    const handleHeight = 28;
+    const minMapHeight = Math.min(180, Math.max(110, layoutHeight * 0.28));
+    const minPanelHeight = Math.min(180, Math.max(120, layoutHeight * 0.24));
+    const maxPanelHeight = Math.max(minPanelHeight, layoutHeight - handleHeight - minMapHeight);
+    setDetailPanelHeight(clamp(nextHeight, minPanelHeight, maxPanelHeight));
+  };
+
+  const startPanelResize = (event) => {
+    event.preventDefault();
+    resizeRef.current = {
+      dragging: true,
+      startY: event.clientY,
+      startHeight: detailPanelRef.current?.offsetHeight || 0,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const movePanelResize = (event) => {
+    if (!resizeRef.current.dragging) return;
+    event.preventDefault();
+    resizeDetailPanel(resizeRef.current.startHeight + resizeRef.current.startY - event.clientY);
+  };
+
+  const endPanelResize = (event) => {
+    if (!resizeRef.current.dragging) return;
+    resizeRef.current.dragging = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const resizeWithKeyboard = (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const currentHeight = detailPanelRef.current?.offsetHeight || 0;
+    resizeDetailPanel(currentHeight + (event.key === "ArrowUp" ? 48 : -48));
+  };
+
+  const layoutStyle = detailPanelHeight
+    ? { "--route-detail-panel-height": `${detailPanelHeight}px` }
+    : undefined;
 
   return h(
     "div",
-    { className: "route-detail-layout" },
+    { className: "route-detail-layout", ref: layoutRef, style: layoutStyle },
     h(
       "div",
       { className: "route-detail-map" },
@@ -162,7 +212,24 @@ function RouteDetail({ route, location, destination, routePath = [], routeSegmen
     ),
     h(
       "div",
-      { className: "route-sheet-scroll route-detail-scroll" },
+      {
+        className: "route-detail-resize-handle",
+        role: "separator",
+        tabIndex: 0,
+        "aria-label": "지도와 경로 설명 영역 크기 조절",
+        "aria-orientation": "horizontal",
+        onPointerDown: startPanelResize,
+        onPointerMove: movePanelResize,
+        onPointerUp: endPanelResize,
+        onPointerCancel: endPanelResize,
+        onKeyDown: resizeWithKeyboard,
+      },
+      h("span", { "aria-hidden": "true" }),
+      h("small", null, "드래그해서 지도 크기 조절")
+    ),
+    h(
+      "div",
+      { className: "route-sheet-scroll route-detail-scroll", ref: detailPanelRef },
       h(
         "header",
         { className: "route-sheet-header" },

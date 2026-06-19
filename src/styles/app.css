@@ -1410,7 +1410,7 @@ button {
 
 .route-detail-layout {
   display: grid;
-  grid-template-rows: 34% minmax(0, 1fr);
+  grid-template-rows: minmax(110px, 1fr) 28px minmax(120px, var(--route-detail-panel-height, 52%));
   min-height: 0;
   overflow: hidden;
 }
@@ -1428,6 +1428,47 @@ button {
 .route-detail-map .map-canvas {
   position: absolute;
   inset: 0;
+}
+
+.route-detail-resize-handle {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 28px;
+  border: 0;
+  border-top: 1px solid #e7dccb;
+  border-bottom: 1px solid #e7dccb;
+  background: #fffef9;
+  color: #77766f;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.route-detail-resize-handle span {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: #c8c0b3;
+}
+
+.route-detail-resize-handle small {
+  font-size: 0.5rem;
+  font-weight: 850;
+}
+
+.route-detail-resize-handle:hover span,
+.route-detail-resize-handle:focus-visible span,
+.route-detail-resize-handle:active span {
+  background: #16834d;
+}
+
+.route-detail-resize-handle:focus-visible {
+  outline: 2px solid #16834d;
+  outline-offset: -2px;
 }
 
 .route-detail-scroll {
