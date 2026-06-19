@@ -1565,6 +1565,8 @@ function ReviewScreen({ location, user, backSignal = 0, onBackStateChange }) {
       placeId: selectedPlace.id,
       placeName: selectedPlace.name,
       placeAddress: selectedPlace.address || "",
+      userCity: user.city || "",
+      userNickname: user.name || user.nickname || "",
       rating,
       content,
     });

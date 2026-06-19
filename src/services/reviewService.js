@@ -13,10 +13,18 @@ export async function fetchPlaceReviews(placeId) {
   };
 }
 
-export async function createPlaceReview({ placeId, placeName, placeAddress = "", rating, content }) {
+export async function createPlaceReview({
+  placeId,
+  placeName,
+  placeAddress = "",
+  userCity = "",
+  userNickname = "",
+  rating,
+  content,
+}) {
   return requestReview("/api/reviews", {
     method: "POST",
-    body: JSON.stringify({ placeId, placeName, placeAddress, rating, content }),
+    body: JSON.stringify({ placeId, placeName, placeAddress, userCity, userNickname, rating, content }),
   });
 }
 

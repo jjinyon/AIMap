@@ -240,6 +240,8 @@ async function handleReviewRequest(request, response, requestUrl) {
       const placeId = String(body.placeId || "").trim();
       const placeName = String(body.placeName || "").trim();
       const placeAddress = String(body.placeAddress || "").trim();
+      const userCity = String(body.userCity || user.city || "").trim();
+      const userNickname = String(body.userNickname || user.nickname || "").trim();
       const content = String(body.content || "").trim();
       const rating = Number(body.rating || 0);
 
@@ -256,10 +258,10 @@ async function handleReviewRequest(request, response, requestUrl) {
         rating,
         content: content.slice(0, 500),
         userId: user.id,
-        userNickname: user.nickname,
-        userCity: user.city || "",
-        userNeighborhood: user.city || "",
-        isLocalResident: isAdjacentNeighborhood(user.city || "", placeAddress),
+        userNickname,
+        userCity,
+        userNeighborhood: userCity,
+        isLocalResident: isAdjacentNeighborhood(userCity, placeAddress),
         createdAt: new Date().toISOString(),
       };
 
